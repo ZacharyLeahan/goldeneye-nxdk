@@ -33,15 +33,19 @@ The profile preserves unrelated settings and makes an INI backup. It uses Custom
 | LT | Aim |
 | B during gameplay | Toggle crouch |
 | A | Jump; clear crouch first; one jump per press |
-| RB | Interact |
+| Y | Interact / open doors |
+| Left-stick click while moving forward | Toggle sprint; stop/aim/fire/crouch/wheel/slap cancels |
+| Right-stick click | One native slap, then return to the gun |
 | X | Reload |
-| Y | Next weapon |
+| LB wheel | Weapon selection |
 
 The wheel does not pause gameplay. Fire and look input are suppressed while selecting. Engine inventory/equipment functions execute only on the local player's gameplay thread; drawing uses a lock-protected snapshot.
 
 ## Files
 
 - weapon-wheel.c: game-thread hook, inventory snapshot/queue, controller handling, regression tests.
+- combat.h: sprint ramp, input edges, temporary slapper state, ammunition-safe gun restoration.
+- combat-test.h: offline sprint/slap integration checks.
 - jump.h: grounded takeoff, native vertical integration, ceiling checks, input/physics tests.
 - wheel-render.h: production renderer, font atlas, vector silhouettes, translucent layout.
 - preview.c: hidden-window visual test using the production renderer.
@@ -74,3 +78,13 @@ Before ascent, nine upward probes across the body footprint check loaded room ge
 Jump tests use GE32_JUMP_TEST=1. Add GE32_JUMP_MOVING_TEST=1 for scripted forward/back movement. GE32_JUMP_CEILING_TEST=1 temporarily increases the test impulse to reach a real ceiling; it must never be used for normal play. None of these test flags should be set for ordinary gameplay.
 
 Cross-PC replication is not yet verified. All physics work stays in the local simulation context and existing position/body updates, without changing the network protocol.
+
+## Sprint and quick slap
+
+Click the left stick while moving forward to toggle a smooth ramp up to 1.35 times the engine's current movement speed. This scales the native forward/strafe movement scalars on the simulation thread; it does not teleport the player or replace collision handling. Stopping, backing up, aiming, firing, crouching, opening the wheel, or starting a slap cancels sprint. Sprint is unavailable in menus, cinematics, tank mode, match freezes, or death. There is no stamina system or slide mechanic.
+
+Click the right stick for a single native slapper attack. The simulation temporarily selects the palm model and fist item, runs the engine's existing slap animation/strike dispatch, and restores both hands, partially loaded magazines, reserve ammunition, and previous-weapon history. Sniper ownership does not substitute a rifle-butt animation. A wheel selection made during the slap is deferred until the slap ends. Holding the stick button does not repeat attacks.
+
+The slap is accepted from ready/fire/recoil states; a weapon transition or reload can temporarily prevent starting it. Pause freezes the action phase; death/tank/stage changes clear the temporary action state. Cross-PC replication and real-target damage still need a multiplayer/playtest pass; automated checks verify native strike dispatch without a spawned target.
+
+Set GE32_COMBAT_TEST=1 only for the offline sprint/slap integration harness. It supplies test weapons and ammunition, runs movement and strike cases, then exits. Never enable it for normal play. GE32_STAND_TEST=1 also checks left/right-stick button press/hold/release edges before the game starts.

@@ -15,7 +15,7 @@ PROFILE = {
     },
 }
 for section in ("Input.Pad", "Input.Pad2", "Input.Pad3", "Input.Pad4"):
-    PROFILE[section] = {"Aim": "lefttrigger", "Use": "rightshoulder", "Reload": "x", "Crouch": "b", "Gadget": "none"}
+    PROFILE[section] = {"Aim": "lefttrigger", "Use": "y", "NextWeapon": "none", "Reload": "x", "Crouch": "b", "Gadget": "none"}
 
 def apply(ini: Path):
     parser = configparser.ConfigParser(interpolation=None, strict=False)

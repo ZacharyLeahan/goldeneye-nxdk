@@ -38,9 +38,16 @@ static int current(void){return snapshotRead().current;}
 static void equip(int id){InterlockedExchange(&pendingWeapon,id);if(logfile){fprintf(logfile,"queue weapon=%d\n",id);fflush(logfile);}}
 static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=localIndex())return;AcquireSRWLockExclusive(&snapshotLock);published=*s;ReleaseSRWLockExclusive(&snapshotLock);}
 #include "jump.h"
+#include "combat.h"
+#include "combat-test.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
+ int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
+ if(isLocal)combatTestBefore(&buttons);
+ unsigned short rawButtons=buttons;
+ if(isLocal)combatBefore(&buttons,&oldbuttons);
  originalTick(x,y,buttons,oldbuttons);
+ if(isLocal){combatAfter(rawButtons);combatTestAfter(rawButtons);}
  int n=localIndex();if(NUMBER!=n||!CURRENT||CURRENT!=PLAYERS[n])return;
  static int testTicks=0;
  if(getenv("GE32_WHEEL_TEST")){
@@ -51,7 +58,7 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
   if(action==3){FN(void(*)(int),0x1000+44864)(5);FN(void(*)(int),0x1000+44864)(8);}
  }
  int wanted=InterlockedExchange(&pendingWeapon,-1);
- if(wanted>=4&&wanted<=25&&FN(int(*)(int),0x1000+43904)(wanted)){
+ if(wanted>=4&&wanted<=25&&!combatDeferWeapon(wanted)&&FN(int(*)(int),0x1000+43904)(wanted)){
   if(logfile){fprintf(logfile,"game accepted weapon=%d\n",wanted);fflush(logfile);}
   FN(void(*)(int,int,int),0x1000+420240)(0,wanted,1);
   FN(void(*)(int,int,int),0x1000+420240)(1,0,1);
@@ -74,6 +81,7 @@ static void inventory(void){InventorySnapshot s=snapshotRead();count=s.count;mem
 static unsigned char buttonHook(void *p,int b){
  if(!pad)pad=p;
  if(p==pad && playing()){
+  if(b==7||b==8)return combatButton(b,getButton(p,b),snapshotRead().allowJump&&!openWheel&&!FN(int(*)(void),0x1000+1453264)());
   if(b==9)return 0; /* LB belongs to the wheel, not aim */
   if(openWheel && (b==0||b==1||b==10)){if(b==0)jumpAHeld=getButton(p,b)!=0;return 0;}
   if(b==0){int slot=*(int*)(base+0x228000+203956);if(slot<0||slot>3)slot=0;return jumpA(getButton(p,b),snapshotRead().allowJump&&!FN(int(*)(void),0x1000+1453264)(),(volatile LONG*)(base+0x303000+1983488+slot*4));}
@@ -172,7 +180,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
  if(reason==DLL_PROCESS_ATTACH){
   DisableThreadLibraryCalls(module);base=(uintptr_t)GetModuleHandleA(NULL);
   logfile=fopen("weapon-wheel.log","w");
-  if(getenv("GE32_STAND_TEST")){testJumpInput();ExitProcess(0);}
+  if(getenv("GE32_STAND_TEST")){testJumpInput();testCombatInput();ExitProcess(0);}
   HMODULE sdl=GetModuleHandleA("SDL2.dll");
   getSize=(void*)GetProcAddress(sdl,"SDL_GL_GetDrawableSize");
   int g=installGameHook();

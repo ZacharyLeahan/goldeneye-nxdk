@@ -36,3 +36,16 @@ The extension is pinned to GE32 Windows 2026.11.07 e8859fe9 and is not a portabl
 - After integrating jumping, the full 20-switch / 100-reopen wheel regression passed, including inventory isolation, pickup/removal, cancellation, empty state and OpenGL checks.
 
 These tests verify local native physics and clearance handling. They do not verify cross-PC replication, every map edge/prop arrangement, or final physical-controller feel. Clearance uses a sampled footprint rather than a continuous swept capsule, so unusual edge geometry remains a playtest area.
+
+## Sprint and quick-slap validation
+
+- Controller-edge checks passed for one event per press, no repeat while held, rearming on release, and menu passthrough.
+- Native movement test passed: forward sprint ramps up, and aiming, firing, crouching, wheel opening, backward movement, and stopping cancel it. Native horizontal displacement was observed.
+- Six slap cases passed: single pistol, dual pistols, owned sniper with palm override, rifle, deferred wheel choice, and rejecting another active-slap request.
+- Each case emitted exactly one native fist strike event and returned to the saved gun(s). Partially loaded magazines, reserve totals and previous-weapon history were preserved.
+- Test guns were supplied only by GE32_COMBAT_TEST; ordinary launches do not add inventory or ammunition.
+- The profile fixture preserved unrelated settings and verified Y interact, no Y weapon cycling, B crouch and LT aim for all four controller sections.
+
+No live target was spawned for the automated slap tests. They verify the native slapper animation/strike dispatch rather than independently measuring target damage. Cross-PC sprint/slap behavior remains unverified.
+
+After sprint/slap integration, 8 moving native-physics jumps and landings passed, followed by the full 20-switch / 100-reopen wheel suite, inventory isolation, pickup/removal, empty-state and OpenGL checks.
