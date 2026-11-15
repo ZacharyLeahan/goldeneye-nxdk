@@ -34,7 +34,8 @@ static void rect(float x,float y,float w,float h){float p[]={x,y,x+w,y,x+w,y+h,x
 static void shape(const float*p,int n){polygon(p,n);}
 static void silhouette(int id,float x,float y,float size){
  glPushMatrix();glTranslatef(x-size*.5f,y-size*.22f,0);glScalef(size/100,size/100,1);glLineWidth(fmaxf(1.f,uiScale));
- if(id==4||id==5||id==6||id==18||id==19||id==20||id==21){
+ if(id==26){float p[]={15,3,85,3,99,17,99,37,85,51,15,51,1,37,1,17};shape(p,8);glColor4f(1,.83f,.3f,1);rect(17,12,66,31);glColor4f(.08f,.1f,.13f,1);float a[]={34,30,50,17,66,30,59,36,50,28,41,36};shape(a,6);}
+ else if(id==4||id==5||id==6||id==18||id==19||id==20||id==21){
   int revolver=id==18;float muzzle=id==5?91:78;
   rect(24,12,54,10);rect(24,9,3,4);rect(70,9,3,4);
   float grip[]={35,21,52,21,46,43,31,43};shape(grip,4);
@@ -89,14 +90,14 @@ static void draw(void*w){
   glBegin(GL_TRIANGLE_STRIP);for(int k=0;k<=64;k++){float a=start+(end-start)*k/64;glVertex2f(cx+cosf(a)*inner,cy+sinf(a)*inner);glVertex2f(cx+cosf(a)*r,cy+sinf(a)*r);}glEnd();
   glLineWidth((sel?3.f:1.f)*uiScale);if(sel)glColor4f(1,.83f,.30f,1);else glColor4f(.7f,.75f,.82f,.25f);arc(cx,cy,r-1,start,end);
   if(count){float tx=cx+cosf(center)*151,ty=cy+sinf(center)*151;float iconSize=count>8?56:count>5?69:91;
-   glColor4f(sel?1:.86f,sel?1:.89f,sel?1:.94f,1);silhouette(ids[j],tx,ty-11,iconSize);
+   glColor4f(sel?1:.86f,sel?1:.89f,sel?1:.94f,1);silhouette(ids[j],tx,ty-11,iconSize);glColor4f(sel?1:.86f,sel?1:.89f,sel?1:.94f,1);
    if(count<=4)centered(tx,ty+35,names[ids[j]]);
    if(count<=4 && ids[j]==oldCurrent){glColor4f(1,.83f,.30f,1);centered(tx,ty+54,"EQUIPPED");}
   }
  }
  glColor4f(.055f,.065f,.085f,.62f);glBegin(GL_TRIANGLE_FAN);glVertex2f(cx,cy);for(int k=0;k<=80;k++){float a=tau*k/80;glVertex2f(cx+cosf(a)*(inner-3),cy+sinf(a)*(inner-3));}glEnd();
- glColor4f(.65f,.71f,.8f,1);centered(cx,cy-32,"WEAPONS");
- glColor4f(1,1,1,1);centered(cx,cy+2,count&&choice>=0?names[ids[choice]]:count?"SELECT A WEAPON":"NO GUNS CARRIED");
+ glColor4f(.65f,.71f,.8f,1);centered(cx,cy-32,"EQUIPMENT");
+ glColor4f(1,1,1,1);centered(cx,cy+2,count&&choice>=0?names[ids[choice]]:count?"SELECT EQUIPMENT":"NO EQUIPMENT");
  glColor4f(.72f,.77f,.85f,1);centered(cx,cy+30,count?"MOVE RIGHT STICK":"PICK UP A GUN");
  glColor4f(1,.83f,.30f,1);centered(cx,cy+r+43,"RELEASE LB TO EQUIP");glColor4f(.80f,.84f,.9f,1);centered(cx,cy+r+68,"B  CANCEL");
  glPopMatrix();glMatrixMode(GL_PROJECTION);glPopMatrix();glPopAttrib();useProgram(prog);activeTexture(active);

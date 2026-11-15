@@ -26,12 +26,20 @@ static unsigned char jumpA(unsigned char raw,int allowed,volatile LONG*latch){
 /* Nine upward traces cover center, axial and diagonal body extents. Search
  * every loaded room, not just the floor tile, so neighboring-room ceilings
  * across portals also participate. Dynamic doors/scenery use engine tracing. */
+/* Native render collision bounds are lazy. Prepare the occupied room on the
+ * simulation thread before tracing instead of mistaking a missing cache for a ceiling. */
+static int jumpRoomReady(int room){
+ int total=*(int*)(base+0x228000+4208);if(room<0||room>=total||total>2048)return 0;
+ void**bounds=(void**)(base+0x303000+27264+room*0x68+0x40);
+ if(!*bounds){FN(int(*)(int),0x1000+8064)(room);FN(void(*)(int),0x1000+11024)(room);}
+ return *bounds!=NULL;
+}
 static float jumpCeiling(float top){
  int total=*(int*)(base+0x228000+4208);if(total<1||total>2048)return -INFINITY;
  void*tile=PP(1856);void*prop=PP(200);if(!tile||!prop)return -INFINITY;
  int room=FN(int(*)(void*),0x1000+883888)(tile);
  unsigned char*rooms=(void*)(base+0x303000+27264);
- if(room<0||room>=total||!*(void**)(rooms+room*0x68+0x40))return -INFINITY;
+ if(!jumpRoomReady(room))return -INFINITY;
  float scale=*(float*)(base+0x228000+4252);if(!isfinite(scale)||scale<=0)return -INFINITY;
  float ceiling=INFINITY,foot=PF(140),head=fmaxf(PF(13940),120.f)+14.f;
  float x=PF(1864),z=PF(1872);int occupied[64];for(int i=0;i<64;i++)occupied[i]=-1;
@@ -76,6 +84,7 @@ static void jumpBeforeVertical(void){
   float head=fmaxf(PF(13940),120.f)+14.f;
   float ceiling=jumpCeiling(PF(140)+head+rise+3);
   if(ceiling<=PF(140)+head+rise+2){
+   if(getenv("GE32_PAD_TEST")&&logfile){fprintf(logfile,"pad ceiling stop: foot=%.2f head=%.2f ceiling=%.2f xz=%.2f %.2f\n",PF(140),head,ceiling,PF(1864),PF(1872));fflush(logfile);}
    PF(152)=0;ceilingStops++;
    /* Do not move the player upward into a ceiling or lower them through a floor. */
    if(isfinite(ceiling))PF(140)=fmaxf(ground,fminf(PF(140),ceiling-head-2));
@@ -88,6 +97,9 @@ static void jumpAfterVertical(void){
 static void jumpTestAfter(void);
 static void dropPrepareVertical(int*,float*);
 static void dropAfterVertical(void);
+static void padBeforeVertical(void);
+static void padPrepareVertical(int*,float*);
+static void padAfterVertical(void);
 static int introTestBlocks,introTestPassed;
 static void verticalHook(int useHeight,float offset){
  int local=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
@@ -95,7 +107,7 @@ static void verticalHook(int useHeight,float offset){
   int introTest=getenv("GE32_INTRO_TEST")&&!jumpAllowed();
   float oldFoot=PF(140),oldVelocity=PF(152);int oldCount=jumpCount;
   if(introTest)InterlockedExchange(&pendingJump,1);
-  jumpBeforeVertical();
+  padBeforeVertical();jumpBeforeVertical();
   if(introTest){
    if(PF(140)!=oldFoot||PF(152)!=oldVelocity||jumpCount!=oldCount||pendingJump){if(logfile){fprintf(logfile,"FAIL intro jump changed physics or retained request\n");fflush(logfile);}ExitProcess(2);}
    introTestBlocks++;
@@ -103,10 +115,10 @@ static void verticalHook(int useHeight,float offset){
    if(!introTestBlocks||jumpCount){if(logfile){fprintf(logfile,"FAIL intro test lacked blocked intro ticks\n");fflush(logfile);}ExitProcess(2);}
    introTestPassed=1;if(logfile){fprintf(logfile,"PASS intro: %d queued jump attempts consumed without physics changes; gameplay starts with no queued jump\n",introTestBlocks);fflush(logfile);}
   }
-  dropPrepareVertical(&useHeight,&offset);
+  dropPrepareVertical(&useHeight,&offset);padPrepareVertical(&useHeight,&offset);
  }
  originalVertical(useHeight,offset);
- if(local){jumpAfterVertical();dropAfterVertical();jumpTestAfter();}
+ if(local){jumpAfterVertical();dropAfterVertical();padAfterVertical();jumpTestAfter();}
 }
 static int installJumpHook(void){
  unsigned char expected[]={0x55,0x53,0x48,0x83,0xec,0x78,0x48,0x8d,0x6c,0x24,0x60,0x0f,0x11,0x75,0x00};

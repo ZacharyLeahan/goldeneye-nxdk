@@ -72,3 +72,24 @@ The intro gate also follows native controllable-camera semantics, including firs
 The bot-present fixture retains three active bots and checks blocking movement bounds while each tested actor temporarily has no render-hit cache; it restores that pointer immediately on the simulation thread before native gameplay resumes. Ordinary damage remains enabled in this live-bot test, so health loss from bots is permitted. The isolated no-fall-health-loss coverage above remains separate.
 
 Final acceptance: all three bot-present gap cases landed successfully with full health in the final run. Nine explicit missing-render-cache actor fixtures blocked correctly; the deck/opening traces passed. Strict -Wall -Wextra -Werror compilation and controller-edge checks also passed.
+
+## Deployable jump pad
+
+- LB wheel lists every owned gun plus Jump Pad, including when no guns are owned. A distinct original silhouette and equipment labels identify the gadget.
+- Native Temple acceptance selected the pad through the real wheel, equipped it, deployed with an RT edge and returned to the previous gun without changing either hand or magazine. Holding the placement trigger did not fire the gun.
+- The launch used native vertical velocity 26, gravity and horizontal momentum. The tested arc peaked at 748.04 from a -468.79 lower floor, then landed on the 468.79 upper floor with full health.
+- The same placed pad launched the player again without a second deployment.
+- Airborne and missing-floor placement attempts were rejected. B cancellation and selecting a gun from LB preserved ammunition totals.
+- A real Temple ceiling at 311.44 stopped pad ascent; the player landed normally. Owner/context reset cleared placed/flight/equipped state.
+- Trigger-edge checks covered held-trigger suppression, fresh-press rearming, menu/intro suppression and preventing gun fire until RT release.
+- Renderer readbacks were visually reviewed for the LB wheel, carried pad, blue hologram and placed pad. GL error checks passed during the native acceptance fixture. World projection uses native camera matrices and viewport parameters; visibility uses simulation-thread geometry/prop traces.
+- The equipment wheel regression passed 20 alternating gun switches and 100 rapid reopen/cancel cycles, foreign-player isolation, pickup/removal, and retaining the pad after all guns were removed.
+- Strict DLL compilation passed with -Wall -Wextra -Werror.
+
+Native room geometry bounds are lazy; the high arc exposed an absent-bound cache being interpreted as a blocking ceiling. The extension now requests the engine’s room load/bounds preparation on the simulation thread before the occupied-room ceiling query. It still stops if preparation fails.
+
+Pads are local gadget state and do not yet replicate as shared objects or activate on other PCs. Character/ceiling clearance is sampled and conservative, not a new continuous collision engine. All-map, tilted-surface and cross-PC behavior are not covered. No Embark assets or game content are distributed.
+
+The full gadget acceptance suite also passed with three active practice bots, including three explicit missing-render-hit-cache character fixtures. Upper-floor landing, reuse, invalid placement, cancellation, gun return/ammunition checks, ceiling contact and reset all completed without a crash.
+
+After the room-cache change, Facility’s indoor ceiling stress regression passed all eight native jumps/ceiling contacts and exact floor landings, including rejecting takeoff under a real low-clearance fixture.

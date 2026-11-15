@@ -1,6 +1,6 @@
 # GE32 extension
 
-Source for the tested Finals-inspired controls and weapon wheel. See [DOWNSTREAM.md](../../DOWNSTREAM.md) for the feature summary and upstream relationship.
+Source for the tested Finals-inspired controls and equipment wheel. See [DOWNSTREAM.md](../../DOWNSTREAM.md) for the feature summary and upstream relationship.
 
 ## Compatibility
 
@@ -26,18 +26,19 @@ The profile preserves unrelated settings and makes an INI backup. It uses Custom
 
 | Input | Behavior |
 | --- | --- |
-| LB held | Open weapon wheel |
-| Right stick with wheel open | Select carried gun |
-| Release LB | Queue selected gun on the gameplay thread |
+| LB held | Open equipment wheel: owned guns plus Jump Pad |
+| Right stick with wheel open | Select a carried gun or Jump Pad |
+| Release LB | Equip the selected gun or Jump Pad |
 | B with wheel open | Cancel selection |
 | LT | Aim |
-| B during gameplay | Toggle crouch |
+| B during gameplay | Toggle crouch; cancel when holding the pad |
 | A | Jump; clear crouch first; one jump per press |
 | Y | Interact / open doors |
 | Left-stick click while moving forward | Toggle sprint; stop/aim/fire/crouch/wheel/slap cancels |
 | Right-stick click | One native slap, then return to the gun |
 | X | Reload |
-| LB wheel | Weapon selection |
+| RT while holding Jump Pad | Place on valid floor, then return to gun |
+| Walk onto a placed pad | Launch upward; steer with movement stick |
 
 The wheel does not pause gameplay. Fire and look input are suppressed while selecting. Engine inventory/equipment functions execute only on the local player's gameplay thread; drawing uses a lock-protected snapshot.
 
@@ -47,6 +48,9 @@ The wheel does not pause gameplay. Fire and look input are suppressed while sele
 - combat.h: sprint ramp, input edges, temporary slapper state, ammunition-safe gun restoration.
 - combat-test.h: offline sprint/slap integration checks.
 - jump.h: grounded takeoff, native vertical integration, ceiling checks, input/physics tests.
+- jump-pad.h: carried gadget, floor validation, native launch, upper-floor traversal, input edges and render snapshot.
+- jump-pad-render.h: procedural pad, hologram preview and carried equipment visual.
+- jump-pad-test.h: native Temple equipment-to-upper-floor acceptance tests.
 - wheel-render.h: production renderer, font atlas, vector silhouettes, translucent layout.
 - preview.c: hidden-window visual test using the production renderer.
 - patch-character-back.py: reversible standard character-menu B-back patch.
@@ -102,3 +106,15 @@ For deterministic wheel regression, set GE32_REGRESSION_PRACTICE=1 alongside GE3
 Character clearance uses native movement bounds rather than character bullet-hit caches. Jump eligibility follows the native controllable camera state (normal camera, or first-person camera with its timer enabled), together with the existing pause/menu/cinematic and match-freeze gates. Pressing or holding A during the intro does not queue a jump for the control handoff; release and press A after play begins.
 
 GE32_DROP_LIVE_TEST=1 alongside GE32_DROP_TEST=1 retains three bots and adds actor-bound collision fixtures, including temporarily missing render-hit caches restored within the simulation-thread fixture. Damage from bots remains enabled. GE32_INTRO_TEST=1 alongside GE32_JUMP_TEST=1 attempts jumps throughout the intro, verifies unchanged jump physics and an empty queue at gameplay handoff, then runs the ordinary jump suite. These flags are only for offline tests.
+
+## Deployable jump pad
+
+Jump Pad is always available in the LB equipment wheel beside the guns currently owned. Select it with the right stick and release LB. Aim down at a level, clear surface; a blue floor hologram marks a valid placement and red marks an invalid one. RT deploys the pad and returns to the previous gun. The placement press cannot discharge the gun, even if RT remains held. B cancels the gadget, and selecting a gun from LB also stows it. RB is unchanged.
+
+Walk onto the deployed pad to launch. Native gravity, momentum, air movement and sampled ceiling clearance remain active. The 26-unit impulse clears Temple’s lower-to-upper opening; steer toward the ledge after clearing its height. A pad is reusable, and placing another replaces the previous local pad. A low ceiling stops ascent. Player/stage changes clear pad state. Placement requires a supported, nearly level footprint and rejects airborne, obstructed or missing-floor positions.
+
+The pad uses original procedural geometry, a translucent preview and a carried-device drawing; no game/Embark assets are bundled. Characters use movement bounds, never render-hit caches. Native room collision bounds are prepared lazily on the simulation thread during high flight. Physics and projection are published to the drawing thread through a locked snapshot.
+
+Pads currently belong to the local player on this computer. Shared pad objects and activation across separate PCs are not networked yet; only the existing native player movement updates remain in use.
+
+Offline acceptance: set GE32_PAD_TEST=1 and GE32_REGRESSION_PRACTICE=1. Add GE32_PAD_VISUAL_TEST=1 to write local renderer BMP readbacks and inspect the preview longer. These flags supply test guns, move the test player and exit; leave them unset for normal play.

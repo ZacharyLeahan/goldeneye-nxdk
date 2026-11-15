@@ -55,4 +55,4 @@ static void dropTestAfter(void){
  }
 }
 
-static void dropTestLaunch(void){static int frames,launched;if((getenv("GE32_DROP_TEST")||getenv("GE32_REGRESSION_PRACTICE"))&&!launched&&++frames==60){launched=1;FN(void(*)(int,int),0x1000+999872)(1,getenv("GE32_DROP_LIVE_TEST")?3:0);if(logfile){fprintf(logfile,"drop test launched native Temple practice\n");fflush(logfile);}}}
+static void dropTestLaunch(void){static int frames,launched;if((getenv("GE32_DROP_TEST")||getenv("GE32_REGRESSION_PRACTICE"))&&!launched&&++frames==60){launched=1;FN(void(*)(int,int),0x1000+999872)(1,(getenv("GE32_DROP_LIVE_TEST")||getenv("GE32_PAD_LIVE_TEST"))?3:0);if(logfile){fprintf(logfile,"drop test launched native Temple practice\n");fflush(logfile);}}}
