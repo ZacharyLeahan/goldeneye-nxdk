@@ -24,7 +24,7 @@ int main(int argc,char**argv){
  for(int shot=0;shot<9;shot++){
   count=shot<2?4:shot==2?2:shot>=5?3:shot==3?5:8;published.grenades=shot==8?0:3;
   int examples[]={6,8,14,15,17,24,25,5};examples[count-2]=GRENADE_ITEM;examples[count-1]=PAD_ITEM;for(int j=0;j<count;j++)ids[j]=examples[j];
-  choice=(shot==5||shot==8)?-1:shot==6?count-1:shot==1?1:0;oldCurrent=6;if(shot>=7)glClearColor(.85f,.83f,.77f,1);else glClearColor(.11f,.14f,.19f,1);glClear(GL_COLOR_BUFFER_BIT);draw(w);glFinish();
+  choice=(shot==5||shot==8)?-1:shot==6?count-1:shot==7?count-2:shot==1?1:0;oldCurrent=6;if(shot>=7)glClearColor(.85f,.83f,.77f,1);else glClearColor(.11f,.14f,.19f,1);glClear(GL_COLOR_BUFFER_BIT);draw(w);glFinish();
   char filename[2048];snprintf(filename,sizeof(filename),"%s/wheel-%d.bmp",argc>1?argv[1]:".",shot);saveBitmap(filename,1280,720);
   unsigned err=glGetError();printf("preview %d: owned=%d selected=%d GL=%u\n",shot,count,choice,err);if(err)return 13;
  }

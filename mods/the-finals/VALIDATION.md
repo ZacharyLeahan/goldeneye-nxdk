@@ -157,3 +157,7 @@ The isolated native Temple grenade acceptance passed: exactly three on the first
 Wheel regression passed 20 alternating equips, 100 rapid open/cancel cycles, neutral-center and same-frame recenter cancellation, foreign-player snapshot isolation, dynamic pickup/removal and rendering. Jump-pad regression passed placement, launch to the upper Temple floor, reuse, invalid placement, B cancel/reselect, gun/ammo restoration, ceiling stopping and owner reset with the new item ID and slot layout. No collision/health timing changes were made.
 
 These checks use a separate offline installation. Real cross-PC grenade replication, host/client authority and every multiplayer loadout remain unverified; no network protocol changes are included. ROMs, binaries, previews and logs remain ignored.
+
+## Selected-item label placement
+
+The single selected name is now anchored outward from its icon rather than at a fixed top heading. Left/right labels align toward their icon, top/bottom labels center on it, and viewport margins bound the text. Neutral center shows no name. Strict DLL/preview compilation passed; nine wheel states and six health previews passed OpenGL checks. Left, top, bottom and right selection previews were visually reviewed on dark/light backgrounds. Input, angular slots, ammo, physics and health behavior are unchanged.
