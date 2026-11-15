@@ -40,18 +40,22 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "jump.h"
 #include "combat.h"
 #include "combat-test.h"
+#include "ledge-drop.h"
+#include "ledge-drop-test.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
  int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
- if(isLocal)combatTestBefore(&buttons);
+ if(isLocal&&getenv("GE32_REGRESSION_PRACTICE")&&jumpAllowed())*(int*)(base+0x303000+618564)=1;
+ if(isLocal&&getenv("GE32_DROP_TEST")){x=0;y=0;}
+ if(isLocal){combatTestBefore(&buttons);dropTestBefore(&buttons);}
  unsigned short rawButtons=buttons;
  if(isLocal)combatBefore(&buttons,&oldbuttons);
  originalTick(x,y,buttons,oldbuttons);
- if(isLocal){combatAfter(rawButtons);combatTestAfter(rawButtons);}
+ if(isLocal){combatAfter(rawButtons);combatTestAfter(rawButtons);dropTestAfter();}
  int n=localIndex();if(NUMBER!=n||!CURRENT||CURRENT!=PLAYERS[n])return;
  static int testTicks=0;
  if(getenv("GE32_WHEEL_TEST")){
-  if(++testTicks==90){FN(int(*)(int),0x1000+44224)(8);FN(void(*)(void),0x1000+459232)();InterlockedExchange(&gameTestsReady,1);}
+  if(++testTicks==90){FN(int(*)(int),0x1000+44224)(5);FN(int(*)(int),0x1000+44224)(8);FN(void(*)(void),0x1000+459232)();InterlockedExchange(&gameTestsReady,1);}
   int action=InterlockedExchange(&testAction,0);
   if(action==1)FN(int(*)(int),0x1000+44224)(6);
   if(action==2)FN(void(*)(int),0x1000+44864)(6);
@@ -154,6 +158,7 @@ static int testTick(void*w){
 static void swapHook(void*w){
  renderThread=GetCurrentThreadId();
  if(!useProgram){useProgram=(void*)wglGetProcAddress("glUseProgram");activeTexture=(void*)wglGetProcAddress("glActiveTexture");}
+ dropTestLaunch();
  if(testTick(w)){swapWindow(w);return;}
  int lb=pad?getButton(pad,9):0,back=pad?getButton(pad,1):0;
  float x=pad?getAxis(pad,2)/32767.f:0,y=pad?getAxis(pad,3)/32767.f:0;
@@ -185,10 +190,11 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
   getSize=(void*)GetProcAddress(sdl,"SDL_GL_GetDrawableSize");
   int g=installGameHook();
   int j=installJumpHook();
+  int d=installDropHook();
   int a=replaceImport("SDL_GameControllerGetButton",buttonHook,(void**)&getButton);
   int b=replaceImport("SDL_GameControllerGetAxis",axisHook,(void**)&getAxis);
   int c=replaceImport("SDL_GL_SwapWindow",swapHook,(void**)&swapWindow);
-  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d button=%d axis=%d swap=%d\n",g,j,a,b,c);fflush(logfile);}
+  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d button=%d axis=%d swap=%d\n",g,j,d,a,b,c);fflush(logfile);}
  }
  return TRUE;
 }

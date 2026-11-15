@@ -88,3 +88,13 @@ Click the right stick for a single native slapper attack. The simulation tempora
 The slap is accepted from ready/fire/recoil states; a weapon transition or reload can temporarily prevent starting it. Pause freezes the action phase; death/tank/stage changes clear the temporary action state. Cross-PC replication and real-target damage still need a multiplayer/playtest pass; automated checks verify native strike dispatch without a spawned target.
 
 Set GE32_COMBAT_TEST=1 only for the offline sprint/slap integration harness. It supplies test weapons and ammunition, runs movement and strike cases, then exits. Never enable it for normal play. GE32_STAND_TEST=1 also checks left/right-stick button press/hold/release edges before the game starts.
+
+## Ledge drops
+
+Walk forward off an open ledge, or press A while moving off it. The extension permits a blocked native step only when a lower walkable floor and sampled landing footprint are verified. Loaded background geometry and dynamic props are traced across the body; a downward trace rejects a solid deck between the ledge and landing. Native movement remains the first choice, and native gravity and landing clamps perform the fall. Health is not overridden.
+
+The support footprint retains the upper floor until the player clears its edge. All drop state and physics writes stay on the local simulation thread. This is sampled clearance, not a continuous swept capsule or a climbing/mantling system. Walls, doors, arbitrary map edges, and cross-PC replication still warrant broader playtesting.
+
+Set GE32_DROP_TEST=1 only for the offline Temple integration fixture. It launches practice, isolates the local player from practice-bot damage, repositions the test player at the upper opening, tests walking/jumping/crouched drops and geometry traces, then exits. GE32_DROP_BASELINE=1 disables the fallback for diagnostic comparison. Neither variable should be set for ordinary play.
+
+For deterministic wheel regression, set GE32_REGRESSION_PRACTICE=1 alongside GE32_WHEEL_TEST=1. This starts an isolated Temple practice session rather than a solo mission with hostile guards. It is a test-only flag.

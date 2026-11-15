@@ -22,7 +22,7 @@ The production wheel renderer was exercised in a hidden test window with 1, 2, 3
 
 ## Limits
 
-The extension is pinned to GE32 Windows 2026.11.07 e8859fe9 and is not a portable multiplayer source implementation. Automated gameplay tests used an offline session; cross-PC multiplayer regression testing remains outstanding. Jumping has offline coverage as detailed below. Sprinting and sliding are not implemented.
+The extension is pinned to GE32 Windows 2026.11.07 e8859fe9 and is not a portable multiplayer source implementation. Automated gameplay tests used an offline session; cross-PC multiplayer regression testing remains outstanding. Jumping has offline coverage as detailed below. Sliding is not implemented.
 
 ## Jump validation
 
@@ -49,3 +49,16 @@ These tests verify local native physics and clearance handling. They do not veri
 No live target was spawned for the automated slap tests. They verify the native slapper animation/strike dispatch rather than independently measuring target damage. Cross-PC sprint/slap behavior remains unverified.
 
 After sprint/slap integration, 8 moving native-physics jumps and landings passed, followed by the full 20-switch / 100-reopen wheel suite, inventory isolation, pickup/removal, empty-state and OpenGL checks.
+
+## Ledge-drop validation
+
+- Temple baseline reproduced the invisible ledge stop above the lower floor.
+- Three consecutive native-engine cases passed: walk off, A jump while moving off, and crouched movement off the opening.
+- Each case landed on the lower floor at -468.79 units from an initial upper floor of 468.79, with full health preserved (1.000).
+- The jump case emitted a native takeoff and landing.
+- Background tracing rejected a downward path through the solid upper deck and accepted the adjacent opening. Infinite background rays are filtered to the tested segment.
+- Practice bots are excluded only by the test fixture; normal play retains them. No health override or global damage suppression was added.
+
+Coverage is local/offline and specific to the Temple opening plus the existing regression suites. Sampled body/landing checks do not prove every map, door, thin obstacle, or cross-PC interaction.
+
+After drop integration, controller-edge checks, six native slap cases, sprint cancellation, and eight moving jumps passed. The wheel suite passed all 20 switches, 100 rapid reopen/cancels, ownership isolation, inventory changes, empty state and GL checks in isolated practice. A prior solo-mission run failed a late switch assertion; the deterministic practice fixture excludes hostile interference and explicitly supplies both test weapons.

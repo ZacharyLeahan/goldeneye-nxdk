@@ -85,11 +85,13 @@ static void jumpAfterVertical(void){
  if(jumpActive&&PF(140)<=PF(144)+.1f&&PF(152)<=0){jumpActive=0;if(logfile){fprintf(logfile,"jump landed=%d\n",jumpCount);fflush(logfile);}}
 }
 static void jumpTestAfter(void);
+static void dropPrepareVertical(int*,float*);
+static void dropAfterVertical(void);
 static void verticalHook(int useHeight,float offset){
  int local=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
- if(local)jumpBeforeVertical();
+ if(local){jumpBeforeVertical();dropPrepareVertical(&useHeight,&offset);}
  originalVertical(useHeight,offset);
- if(local){jumpAfterVertical();jumpTestAfter();}
+ if(local){jumpAfterVertical();dropAfterVertical();jumpTestAfter();}
 }
 static int installJumpHook(void){
  unsigned char expected[]={0x55,0x53,0x48,0x83,0xec,0x78,0x48,0x8d,0x6c,0x24,0x60,0x0f,0x11,0x75,0x00};
