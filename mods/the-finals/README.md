@@ -32,8 +32,8 @@ The profile preserves unrelated settings and makes an INI backup. It uses Custom
 | B with wheel open | Cancel selection |
 | LT | Aim |
 | B during gameplay | Toggle crouch |
-| A while crouched | Stand up; consume that press until release |
-| A while standing | Interact |
+| A | Jump; clear crouch first; one jump per press |
+| RB | Interact |
 | X | Reload |
 | Y | Next weapon |
 
@@ -42,6 +42,7 @@ The wheel does not pause gameplay. Fire and look input are suppressed while sele
 ## Files
 
 - weapon-wheel.c: game-thread hook, inventory snapshot/queue, controller handling, regression tests.
+- jump.h: grounded takeoff, native vertical integration, ceiling checks, input/physics tests.
 - wheel-render.h: production renderer, font atlas, vector silhouettes, translucent layout.
 - preview.c: hidden-window visual test using the production renderer.
 - patch-character-back.py: reversible standard character-menu B-back patch.
@@ -63,3 +64,13 @@ With GE32 closed, restore GE32.before-wheel.exe as GE32.exe to remove the wheel 
 ## Licensing and contents
 
 Original extension code is provided under the repository's MIT license. Upstream attribution, NOTICE and LICENSE remain intact. No third-party runtime/compiler code or game assets are vendored with this extension. No game binaries or ROMs are distributed. THE FINALS is used only as a description of the control inspiration; this project is unofficial and unaffiliated with Embark Studios.
+
+## Jump implementation
+
+A presses enqueue a request from the input adapter. The simulation-thread vertical-movement hook accepts takeoff only when grounded, alive, unpaused, outside menus/cinematics/tanks, and not frozen by a match countdown. Native vertical velocity receives an impulse of 5.8; the engine retains gravity, horizontal movement, floor following, landing, and collision/body-position updates. There is no extra jump while airborne or automatic repeat while A is held.
+
+Before ascent, nine upward probes across the body footprint check loaded room geometry and occupied-room dynamic doors/scenery. Low standing clearance rejects takeoff; a ceiling contact stops upward velocity. These are conservative sampled clearance checks, not a new continuous capsule collision engine or a mantling system. The wheel, aim profile and B crouch remain intact.
+
+Jump tests use GE32_JUMP_TEST=1. Add GE32_JUMP_MOVING_TEST=1 for scripted forward/back movement. GE32_JUMP_CEILING_TEST=1 temporarily increases the test impulse to reach a real ceiling; it must never be used for normal play. None of these test flags should be set for ordinary gameplay.
+
+Cross-PC replication is not yet verified. All physics work stays in the local simulation context and existing position/body updates, without changing the network protocol.

@@ -22,4 +22,17 @@ The production wheel renderer was exercised in a hidden test window with 1, 2, 3
 
 ## Limits
 
-The extension is pinned to GE32 Windows 2026.11.07 e8859fe9 and is not a portable multiplayer source implementation. Automated gameplay tests used an offline session; cross-PC multiplayer regression testing remains outstanding. No jumping, sprinting or sliding is implemented.
+The extension is pinned to GE32 Windows 2026.11.07 e8859fe9 and is not a portable multiplayer source implementation. Automated gameplay tests used an offline session; cross-PC multiplayer regression testing remains outstanding. Jumping has offline coverage as detailed below. Sprinting and sliding are not implemented.
+
+## Jump validation
+
+- A-input edge tests: a press queues one request and clears crouch; holding A does not queue repeated requests; release rearms; menu A is preserved.
+- Dam: 8 stationary native-physics jumps, consistent 60.60-unit peak and exact floor landing.
+- Facility: 8 indoor native-physics jumps and floor landings.
+- Dam moving test: 8 jumps while forwarding/backing with native movement inputs; maximum observed horizontal excursion 74.45 units.
+- Facility ceiling stress: 8 test-only stronger jumps contacted a real ceiling, stopped ascending, and landed; 8 ceiling stops. Normal impulse remains 5.8, not the test impulse.
+- A simulation-thread low-clearance fixture under that real ceiling rejected takeoff and restored the test state before further native movement.
+- Airborne A did not produce another jump. Holding A through landing did not bounce again. No non-finite vertical states were observed.
+- After integrating jumping, the full 20-switch / 100-reopen wheel regression passed, including inventory isolation, pickup/removal, cancellation, empty state and OpenGL checks.
+
+These tests verify local native physics and clearance handling. They do not verify cross-PC replication, every map edge/prop arrangement, or final physical-controller feel. Clearance uses a sampled footprint rather than a continuous swept capsule, so unusual edge geometry remains a playtest area.
