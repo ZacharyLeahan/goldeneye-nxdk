@@ -51,6 +51,9 @@ The wheel does not pause gameplay. Fire and look input are suppressed while sele
 - jump-pad.h: carried gadget, floor validation, native launch, upper-floor traversal, input edges and render snapshot.
 - jump-pad-render.h: procedural pad, hologram preview and carried equipment visual.
 - jump-pad-test.h: native Temple equipment-to-upper-floor acceptance tests.
+- health-bars.h: confirmed native-hit observer, true health/armor reads, target lifecycle and locked render snapshots.
+- health-bars-render.h: world-anchored segmented bars and compact names.
+- health-bars-test.h: native gunfire, timing, armor, lifecycle, sight and mission-guard tests.
 - wheel-render.h: production renderer, font atlas, vector silhouettes, translucent layout.
 - preview.c: hidden-window visual test using the production renderer.
 - patch-character-back.py: reversible standard character-menu B-back patch.
@@ -130,3 +133,13 @@ Ledge and added-jump traversal retains a shared support/collision context until 
 A 16-point circular footprint plus the center covers the body’s front, back and sides. Horizontal sweeps and vertical destination probes include the toe region, and collision geometry is prepared for intersected rooms independently of camera visibility. Gravity, movement input and landing clamps remain native. These are conservative sampled checks, not a continuous capsule collision engine.
 
 Set GE32_TEMPLE_STRESS=1 with GE32_REGRESSION_PRACTICE=1 for the offline 64-route perimeter suite: four edges, corners, retreat timings, strafing, sprint, crouch, jumps and eight pad launch directions. GE32_TEMPLE_DEFERRED_AUDIT=1 checks the recorded paths against background geometry after each route; GE32_TEMPLE_GEOMETRY_AUDIT=1 checks it during movement. The deferred version avoids preparing collision caches ahead of the tested movement. GE32_TEMPLE_VISUAL_TEST=1 writes a local renderer readback for a representative room transition. GE32_TEMPLE_PROBE=1 writes local floor/room diagnostic grids and exits. All flags are offline-only and leave normal gameplay unchanged when unset.
+
+## Confirmed-hit health bars
+
+A damaging native bullet/melee hit reveals the target’s current health above their head. Repeated damaging hits restart the timer. The supplied roughly 60 fps reference recording showed approximately 3.25 seconds at full visibility after the last hit, followed by a 0.20-second fade; these are the extension’s named timing constants. This matches the supplied footage rather than claiming a universal timing specification for every version or mode of THE FINALS. The fade eases out, and the main bar updates immediately with a brief lighter damage trail. Armor uses a thin secondary strip. Only the actual player/bot name (or GUARD) is shown; no numeric damage counter or character outline is added.
+
+Misses, invulnerable hits and other shooters’ damage do not open the display. Each target has its own timer. Native health changes update an already-visible bar without extending its timeout. Dead targets fade promptly; removed identities, new lives and stage/local-player changes clear old records. The bar is culled behind solid background/doors, outside the viewport or behind the camera, and hidden while gameplay is unavailable. Pausing freezes the simulation-time timeout. Drawing receives only a lock-protected value snapshot; it never follows native character pointers or changes damage.
+
+The hit callback is signature-checked for the supported GE32 release. The game’s damage/armor/health behavior is unchanged. Cross-PC authoritative-health updates, all weapons and every map are not exhaustively verified. A remote hit awaiting replicated HP is kept briefly pending and cannot invent health or show a bar before an observed decrease.
+
+Offline tests: GE32_HEALTH_TEST=1, GE32_REGRESSION_PRACTICE=1 and GE32_PAD_LIVE_TEST=1 launch the native Temple fixture with actual targets, exercise native gunfire and then exit. GE32_HEALTH_VISUAL_TEST=1 also writes local hit/fade BMP readbacks. The fixture freezes bots, places the player and target, invokes native trigger/strike paths, and supplies eligibility/health fixtures for armor and lifecycle cases. GE32_HEALTH_GUARD_TEST=1 with -level_34 validates native mission-guard damage and armor semantics. These flags are for offline tests only and must be unset for ordinary play.

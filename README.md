@@ -657,6 +657,8 @@ GoldenEye or James Bond. "GoldenEye 007", "007", "James Bond" and related
 marks belong to their respective owners; they are used here only to say which
 game this port runs. No official logos, box art, or marketing assets are used.
 
+The optional downstream THE FINALS-inspired extension is unofficial and is not affiliated with or endorsed by Embark Studios or Nexon. It includes no THE FINALS code, art, or assets.
+
 ### What the download contains
 
 - **The engine:** the `port/` layer plus the compiled decompilation.
