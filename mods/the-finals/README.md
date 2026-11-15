@@ -27,8 +27,8 @@ The profile preserves unrelated settings and makes an INI backup. It uses Custom
 | Input | Behavior |
 | --- | --- |
 | LB held | Open equipment wheel: owned guns plus Jump Pad |
-| Right stick with wheel open | Select a carried gun or Jump Pad |
-| Release LB | Equip the selected gun or Jump Pad |
+| Right stick with wheel open | Select equipment; return to center to clear selection |
+| Release LB | Equip the highlighted item; neutral center keeps current equipment |
 | B with wheel open | Cancel selection |
 | LT | Aim |
 | B during gameplay | Toggle crouch; cancel when holding the pad |
@@ -118,3 +118,7 @@ The pad uses original procedural geometry, a translucent preview and a carried-d
 Pads currently belong to the local player on this computer. Shared pad objects and activation across separate PCs are not networked yet; only the existing native player movement updates remain in use.
 
 Offline acceptance: set GE32_PAD_TEST=1 and GE32_REGRESSION_PRACTICE=1. Add GE32_PAD_VISUAL_TEST=1 to write local renderer BMP readbacks and inspect the preview longer. These flags supply test guns, move the test player and exit; leave them unset for normal play.
+
+## Neutral equipment-wheel center
+
+Opening LB highlights the equipped item if it is represented in the wheel. A deliberate gentle stick nudge or returning from a sector enters the empty center. Releasing LB from center keeps the current item; recentering and releasing on the same frame also cancels. Move outward again to select an item. Opening and releasing an unchanged item does not enqueue a redundant weapon change. The wheel uses icons for every item and shows only the highlighted item’s name above it. The center stays transparent, with no text panel or repeated equipped labels.

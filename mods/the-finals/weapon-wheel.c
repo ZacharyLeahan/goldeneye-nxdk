@@ -9,7 +9,7 @@
 static uintptr_t base;
 static void *pad;
 static volatile LONG openWheel;
-static int previousLB,choice,cancelled,ids[32],count;
+static int previousLB,choice,cancelled,wheelStickEngaged,ids[32],count;
 static int oldCurrent=-1;
 static unsigned char (*getButton)(void*,int);
 static short (*getAxis)(void*,int);
@@ -108,14 +108,17 @@ static short axisHook(void*p,int a){
 static void wheelUpdate(int lb,int back,float x,float y){
  if(!playing()){openWheel=0;previousLB=lb;cancelled=0;return;}
  if(lb&&!previousLB){
-  inventory();oldCurrent=current();choice=count?0:-1;
+  inventory();oldCurrent=current();choice=-1;
   for(int i=0;i<count;i++)if(ids[i]==oldCurrent)choice=i;
-  openWheel=1;cancelled=0;
+  openWheel=1;cancelled=0;wheelStickEngaged=0;
   if(logfile){fprintf(logfile,"wheel local=%d context=%d owned=%d current=%d\n",snapshotRead().local,-1,count,oldCurrent);fflush(logfile);}
  }
- if(openWheel&&lb){
+ if(openWheel){
+  if(x*x+y*y>.16f*.16f)wheelStickEngaged=1;
   if(back){cancelled=1;openWheel=0;}
+  else if(x*x+y*y<.22f*.22f&&wheelStickEngaged)choice=-1;
   else if(x*x+y*y>.28f*.28f&&count){
+   wheelStickEngaged=1;
    float angle=atan2f(y,x)+1.57079632679f+3.14159265359f/count;
    while(angle<0)angle+=6.28318530718f;
    int target=((int)(angle*count/6.28318530718f))%count;
@@ -127,7 +130,7 @@ static void wheelUpdate(int lb,int back,float x,float y){
   }
  }
  if(!lb&&previousLB){
-  if(openWheel&&!cancelled&&choice>=0&&choice<count&&available(ids[choice]))equip(ids[choice]);
+  if(openWheel&&!cancelled&&choice>=0&&choice<count&&available(ids[choice])&&ids[choice]!=oldCurrent)equip(ids[choice]);
   openWheel=0;cancelled=0;
  }
  previousLB=lb;
@@ -143,35 +146,47 @@ static void padTestCapture(void*w,const char*name){
 static void padTestRenderTick(void*w){
  if(!getenv("GE32_PAD_TEST"))return;
  int action=InterlockedExchange(&padTestRenderAction,0);static int rtFrames;
- if(action==1||action==3){wheelUpdate(1,0,0,0);int index=-1;for(int i=0;i<count;i++)if(ids[i]==(action==1?PAD_ITEM:5))index=i;testAssert(index>=0,"jump pad available in equipment wheel");float a=-1.57079632679f+index*6.28318530718f/count;wheelUpdate(1,0,cosf(a),sinf(a));if(getenv("GE32_PAD_VISUAL_TEST")&&useProgram&&activeTexture){draw(w);padTestCapture(w,"pad-wheel.bmp");}wheelUpdate(0,0,0,0);}
+ if(action==1||action==3){wheelUpdate(1,0,0,0);int index=-1;for(int i=0;i<count;i++)if(ids[i]==(action==1?PAD_ITEM:5))index=i;testAssert(index>=0,"jump pad available in equipment wheel");float a=-1.57079632679f+index*6.28318530718f/count;wheelUpdate(1,0,cosf(a),sinf(a));if(getenv("GE32_PAD_VISUAL_TEST")&&useProgram&&activeTexture){draw(w);padTestCapture(w,"pad-wheel.bmp");}wheelUpdate(0,0,cosf(a),sinf(a));}
  if(action==2){padTrigger(0,1);padTrigger(1,1);rtFrames=20;}
  if(rtFrames){padTrigger(1,1);if(!--rtFrames)padTrigger(0,1);}
  if(useProgram&&activeTexture){while(glGetError()!=GL_NO_ERROR){}drawPad(w);if(getenv("GE32_PAD_VISUAL_TEST")){static int captured;if(!captured&&padTestPhase==2&&padTestWait>60){padTestCapture(w,"pad-carry.bmp");captured=1;}if(captured==1&&padTestPhase==4&&padSnapshot().visible){padTestCapture(w,"pad-placed.bmp");captured=2;}}testAssert(glGetError()==GL_NO_ERROR,"jump-pad preview/world/HUD render without GL errors");}
 }
+static void testWheelCenter(void){
+ InventorySnapshot s=snapshotRead();int index=0;for(int i=0;i<s.count;i++)if(s.ids[i]!=s.current){index=i;break;}
+ float angle=-1.57079632679f+index*6.28318530718f/s.count,x=cosf(angle),y=sinf(angle);
+ wheelUpdate(1,0,0,0);testAssert(choice>=0&&ids[choice]==s.current,"opening highlights equipped item");wheelUpdate(1,0,0,0);wheelUpdate(0,0,0,0);testAssert(pendingWeapon==-1,"opening/releasing current item does not re-equip");
+ wheelUpdate(1,0,0,0);wheelUpdate(1,0,.18f,0);testAssert(choice==-1,"gentle nudge reaches neutral without another item");wheelUpdate(0,0,0,0);testAssert(pendingWeapon==-1,"gentle-neutral release keeps current item");
+ wheelUpdate(1,0,0,0);wheelUpdate(1,0,x,y);testAssert(choice==index,"outer sector selects item");wheelUpdate(1,0,.08f,-.08f);testAssert(choice==-1,"center clears sector selection");wheelUpdate(0,0,0,0);testAssert(pendingWeapon==-1&&current()==s.current,"center release preserves equipment");
+ wheelUpdate(1,0,0,0);wheelUpdate(1,0,x,y);wheelUpdate(0,0,0,0);testAssert(pendingWeapon==-1,"same-frame recenter/release cancels");
+ wheelUpdate(1,0,0,0);wheelUpdate(1,0,x,y);wheelUpdate(1,0,0,0);wheelUpdate(1,0,x,y);testAssert(choice==index,"selection rearms after leaving center");wheelUpdate(1,1,x,y);wheelUpdate(0,0,0,0);
+ if(logfile){fprintf(logfile,"PASS wheel neutral: equipped highlight, no redundant equip, select-center-release, same-frame cancellation, reselect and B cancel\n");fflush(logfile);}
+}
 static int testTick(void*w){
- static int frame,completed;
+ static int frame,completed,initialWeapon;
  if(!getenv("GE32_WHEEL_TEST")||!gameTestsReady||!playing())return 0;
  InventorySnapshot s=snapshotRead();
  testAssert(s.tickThread!=GetCurrentThreadId(),"gameplay and drawing threads are separate");
- if(++frame==1){testAssert(s.count==3,"initial snapshot contains two guns and jump pad");if(logfile)fprintf(logfile,"TEST: game thread=%lu render thread=%lu local=%d owned=2\n",s.tickThread,GetCurrentThreadId(),s.local);}
+ if(frame==0&&s.current!=5&&s.current!=8)return 1;
+ if(++frame==1){initialWeapon=s.current;testAssert(s.count==3,"initial snapshot contains two guns and jump pad");if(logfile)fprintf(logfile,"TEST: game thread=%lu render thread=%lu local=%d owned=2\n",s.tickThread,GetCurrentThreadId(),s.local);}
  int cycle=(frame-1)/120,phase=(frame-1)%120;
  if(cycle<20){
-  int desired=cycle%2?5:8,index=0;for(int i=0;i<s.count;i++)if(s.ids[i]==desired)index=i;float angle=-1.57079632679f+index*6.28318530718f/s.count;float tx=cosf(angle),ty=sinf(angle);
+  int desired=cycle%2?initialWeapon:(initialWeapon==5?8:5),index=0;for(int i=0;i<s.count;i++)if(s.ids[i]==desired)index=i;float angle=-1.57079632679f+index*6.28318530718f/s.count;float tx=cosf(angle),ty=sinf(angle);
   if(phase==0){wheelUpdate(1,0,0,0);testAssert(count==3,"reopened equipment wheel retains two guns and pad");}
   else if(phase<5)wheelUpdate(1,0,tx,ty);
-  else wheelUpdate(0,0,0,0);
+  else wheelUpdate(0,0,tx,ty);
   if(phase==119){testAssert(current()==desired,"game thread equipped alternating requested weapon");completed++;}
   if(openWheel&&useProgram&&activeTexture){while(glGetError()!=GL_NO_ERROR){}draw(w);testAssert(glGetError()==GL_NO_ERROR,"wheel renders without GL errors");}
  }else{
   int end=(frame-1)-2400;
   if(end==0){
+   testWheelCenter();
    for(int i=0;i<100;i++){wheelUpdate(1,0,0,0);testAssert(count==3,"100 rapid opens retain equipment ownership");wheelUpdate(1,1,0,0);wheelUpdate(0,0,0,0);}
    InventorySnapshot remote={0};publishInventory(31,&remote);testAssert(snapshotRead().count==3,"foreign player cannot overwrite local inventory snapshot");
    int before=current();wheelUpdate(1,0,0,1);wheelUpdate(1,1,0,1);wheelUpdate(0,0,0,0);testAssert(pendingWeapon==-1&&current()==before,"B cancels without enqueueing a switch");InterlockedExchange(&testAction,1);
   }
   if(end==30){wheelUpdate(1,0,0,0);testAssert(count==4,"pickup added on game thread appears");wheelUpdate(1,1,0,0);wheelUpdate(0,0,0,0);InterlockedExchange(&testAction,2);}
   if(end==60){wheelUpdate(1,0,0,0);testAssert(count==3,"removed gun does not persist as ghost entry");wheelUpdate(1,1,0,0);wheelUpdate(0,0,0,0);InterlockedExchange(&testAction,3);}
-  if(end==90){wheelUpdate(1,0,0,0);testAssert(count==1&&ids[0]==PAD_ITEM,"pad remains selectable after all guns removed");if(useProgram&&activeTexture){while(glGetError()!=GL_NO_ERROR){}draw(w);testAssert(glGetError()==GL_NO_ERROR,"empty state renders without GL errors");}
+  if(end==90){wheelUpdate(1,0,0,0);testAssert(count==1&&ids[0]==PAD_ITEM,"pad remains selectable after all guns removed");testAssert(choice==-1,"opening with no represented equipped item stays neutral");if(useProgram&&activeTexture){while(glGetError()!=GL_NO_ERROR){}draw(w);testAssert(glGetError()==GL_NO_ERROR,"empty state renders without GL errors");}
    if(logfile){fprintf(logfile,"PASS: %d alternating switches, 100 rapid reopen/cancels, foreign-player isolation, pickup/removal, pad retained with no guns, GL rendering, separate game/render threads\n",completed);fflush(logfile);}ExitProcess(0);
   }
  }

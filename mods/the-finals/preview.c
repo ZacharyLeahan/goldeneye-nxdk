@@ -15,10 +15,10 @@ int main(int argc,char**argv){
  if(init(0x20))return 11;attr(17,3);attr(18,0);attr(21,2);
  void*w=create("Offscreen wheel visual test",0,0,1280,720,0x2|0x8);if(!w||!context(w))return 12;
  getSize=(void*)GetProcAddress(sdl,"SDL_GL_GetDrawableSize");useProgram=(void*)wglGetProcAddress("glUseProgram");activeTexture=(void*)wglGetProcAddress("glActiveTexture");
- for(int shot=0;shot<5;shot++){
-  count=shot<2?2:shot==2?1:shot==3?3:8;
-  int examples[]={6,8,5,14,15,17,24,25};for(int j=0;j<count;j++)ids[j]=examples[j];
-  choice=shot==1?1:0;oldCurrent=6;glClearColor(.11f,.14f,.19f,1);glClear(GL_COLOR_BUFFER_BIT);draw(w);glFinish();
+ for(int shot=0;shot<9;shot++){
+  count=shot<2?2:shot==2?1:shot>=5?3:shot==3?3:8;
+  int examples[]={6,8,26,14,15,17,24,25};for(int j=0;j<count;j++)ids[j]=examples[j];
+  choice=(shot==5||shot==8)?-1:shot==6?2:shot==1?1:0;oldCurrent=6;if(shot>=7)glClearColor(.85f,.83f,.77f,1);else glClearColor(.11f,.14f,.19f,1);glClear(GL_COLOR_BUFFER_BIT);draw(w);glFinish();
   char filename[2048];snprintf(filename,sizeof(filename),"%s/wheel-%d.bmp",argc>1?argv[1]:".",shot);saveBitmap(filename,1280,720);
   unsigned err=glGetError();printf("preview %d: owned=%d selected=%d GL=%u\n",shot,count,choice,err);if(err)return 13;
  }

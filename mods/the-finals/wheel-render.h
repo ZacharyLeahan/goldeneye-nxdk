@@ -81,24 +81,21 @@ static void draw(void*w){
  glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
  uiScale=fminf(width/1280.f,height/720.f);float vw=width/uiScale,vh=height/uiScale;
  glMatrixMode(GL_PROJECTION);glPushMatrix();glLoadIdentity();glOrtho(0,vw,vh,0,-1,1);glMatrixMode(GL_MODELVIEW);glPushMatrix();glLoadIdentity();initFont();
- float cx=vw*.5f,cy=vh*.5f-8,r=205,inner=99;const float tau=6.28318530718f;
- glColor4f(.015f,.02f,.03f,.10f);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(vw,0);glVertex2f(vw,vh);glVertex2f(0,vh);glEnd();
+ float cx=vw*.5f,cy=vh*.5f-8,r=230,inner=118;const float tau=6.28318530718f;
+ glColor4f(.015f,.02f,.03f,.025f);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(vw,0);glVertex2f(vw,vh);glVertex2f(0,vh);glEnd();
  int slices=count?count:1;
  for(int j=0;j<slices;j++){
   float center=-tau*.25f+j*tau/slices,gap=count>1?.018f:0,start=center-tau/(2*slices)+gap,end=center+tau/(2*slices)-gap;int sel=j==choice&&count;
-  if(sel)glColor4f(.24f,.27f,.31f,.68f);else glColor4f(.035f,.045f,.06f,.56f);
+  if(sel)glColor4f(.48f,.51f,.57f,.28f);else glColor4f(.035f,.045f,.06f,.18f);
   glBegin(GL_TRIANGLE_STRIP);for(int k=0;k<=64;k++){float a=start+(end-start)*k/64;glVertex2f(cx+cosf(a)*inner,cy+sinf(a)*inner);glVertex2f(cx+cosf(a)*r,cy+sinf(a)*r);}glEnd();
-  glLineWidth((sel?3.f:1.f)*uiScale);if(sel)glColor4f(1,.83f,.30f,1);else glColor4f(.7f,.75f,.82f,.25f);arc(cx,cy,r-1,start,end);
-  if(count){float tx=cx+cosf(center)*151,ty=cy+sinf(center)*151;float iconSize=count>8?56:count>5?69:91;
+  glLineWidth((sel?3.f:1.f)*uiScale);if(sel)glColor4f(1,1,1,.92f);else glColor4f(.85f,.9f,1,.16f);arc(cx,cy,r-1,start,end);
+  if(count){float tx=cx+cosf(center)*174,ty=cy+sinf(center)*174;float iconSize=count>8?56:count>5?69:91;
+   if(ids[j]!=26){glColor4f(0,0,0,.55f);silhouette(ids[j],tx+1.2f,ty-9.8f,iconSize);}
    glColor4f(sel?1:.86f,sel?1:.89f,sel?1:.94f,1);silhouette(ids[j],tx,ty-11,iconSize);glColor4f(sel?1:.86f,sel?1:.89f,sel?1:.94f,1);
-   if(count<=4)centered(tx,ty+35,names[ids[j]]);
-   if(count<=4 && ids[j]==oldCurrent){glColor4f(1,.83f,.30f,1);centered(tx,ty+54,"EQUIPPED");}
   }
  }
- glColor4f(.055f,.065f,.085f,.62f);glBegin(GL_TRIANGLE_FAN);glVertex2f(cx,cy);for(int k=0;k<=80;k++){float a=tau*k/80;glVertex2f(cx+cosf(a)*(inner-3),cy+sinf(a)*(inner-3));}glEnd();
- glColor4f(.65f,.71f,.8f,1);centered(cx,cy-32,"EQUIPMENT");
- glColor4f(1,1,1,1);centered(cx,cy+2,count&&choice>=0?names[ids[choice]]:count?"SELECT EQUIPMENT":"NO EQUIPMENT");
- glColor4f(.72f,.77f,.85f,1);centered(cx,cy+30,count?"MOVE RIGHT STICK":"PICK UP A GUN");
- glColor4f(1,.83f,.30f,1);centered(cx,cy+r+43,"RELEASE LB TO EQUIP");glColor4f(.80f,.84f,.9f,1);centered(cx,cy+r+68,"B  CANCEL");
+ /* The open center deliberately leaves the world/reticle unobscured. */
+ glColor4f(.9f,.94f,1,.18f);glLineWidth(uiScale);arc(cx,cy,inner-2,0,tau);
+ if(choice>=0&&choice<count){glColor4f(0,0,0,.7f);centered(cx+1,cy-r-25,names[ids[choice]]);glColor4f(1,1,1,1);centered(cx,cy-r-26,names[ids[choice]]);}
  glPopMatrix();glMatrixMode(GL_PROJECTION);glPopMatrix();glPopAttrib();useProgram(prog);activeTexture(active);
 }
