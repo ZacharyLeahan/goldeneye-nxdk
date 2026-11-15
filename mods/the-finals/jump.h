@@ -11,11 +11,12 @@ static float jumpCooldown;
 static unsigned short jumpTestMotion;
 static void *jumpPlayer;
 static void (*originalVertical)(int,float);
+static int jumpCameraPlayable(void){int mode=*(int*)(base+0x303000+65816);return mode==0||(mode==4&&*(int*)(base+0x228000+13352));}
 static int jumpAllowed(void){
- return CURRENT&&!PI(256)&&PI(512)&&!PI(588)&&!PI(13948)&&
+ return CURRENT&&jumpCameraPlayable()&&!PI(256)&&PI(512)&&!PI(588)&&!PI(13948)&&
  !*(int*)(base+0x303000+65912)&&
  !FN(int(*)(void),0x1000+537648)()&&!FN(int(*)(void),0x1000+61392)()&&
- !FN(int(*)(void),0x1000+1453264)()&&!FN(int(*)(void),0x1000+1338832)()&&!FN(int(*)(void),0x1000+1212864)();
+ !FN(int(*)(void),0x1000+1453264)()&&!FN(int(*)(void),0x1000+1338832)()&&!FN(int(*)(void),0x1000+1212864)()&&!FN(int(*)(void),0x1000+1193040)();
 }
 static unsigned char jumpA(unsigned char raw,int allowed,volatile LONG*latch){
  if(raw&&!jumpAHeld&&allowed){InterlockedExchange(latch,0);InterlockedExchange(&pendingJump,1);}
@@ -87,9 +88,23 @@ static void jumpAfterVertical(void){
 static void jumpTestAfter(void);
 static void dropPrepareVertical(int*,float*);
 static void dropAfterVertical(void);
+static int introTestBlocks,introTestPassed;
 static void verticalHook(int useHeight,float offset){
  int local=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
- if(local){jumpBeforeVertical();dropPrepareVertical(&useHeight,&offset);}
+ if(local){
+  int introTest=getenv("GE32_INTRO_TEST")&&!jumpAllowed();
+  float oldFoot=PF(140),oldVelocity=PF(152);int oldCount=jumpCount;
+  if(introTest)InterlockedExchange(&pendingJump,1);
+  jumpBeforeVertical();
+  if(introTest){
+   if(PF(140)!=oldFoot||PF(152)!=oldVelocity||jumpCount!=oldCount||pendingJump){if(logfile){fprintf(logfile,"FAIL intro jump changed physics or retained request\n");fflush(logfile);}ExitProcess(2);}
+   introTestBlocks++;
+  }else if(getenv("GE32_INTRO_TEST")&&jumpAllowed()&&!introTestPassed){
+   if(!introTestBlocks||jumpCount){if(logfile){fprintf(logfile,"FAIL intro test lacked blocked intro ticks\n");fflush(logfile);}ExitProcess(2);}
+   introTestPassed=1;if(logfile){fprintf(logfile,"PASS intro: %d queued jump attempts consumed without physics changes; gameplay starts with no queued jump\n",introTestBlocks);fflush(logfile);}
+  }
+  dropPrepareVertical(&useHeight,&offset);
+ }
  originalVertical(useHeight,offset);
  if(local){jumpAfterVertical();dropAfterVertical();jumpTestAfter();}
 }
@@ -108,6 +123,8 @@ static void testJumpInput(void){
  pendingJump=0;if(jumpA(1,1,&latch)||pendingJump)ExitProcess(3);
  jumpA(0,1,&latch);jumpA(1,1,&latch);if(pendingJump!=1)ExitProcess(3);
  pendingJump=0;jumpA(0,0,&latch);if(jumpA(1,0,&latch)!=1||pendingJump)ExitProcess(3);
+ jumpA(0,0,&latch);jumpA(1,0,&latch);jumpA(1,1,&latch);if(pendingJump)ExitProcess(3);
+ jumpA(0,1,&latch);jumpA(1,1,&latch);if(pendingJump!=1)ExitProcess(3);
  jumpA(0,0,&latch);jumpAHeld=0;pendingJump=0;
  if(logfile){fprintf(logfile,"PASS: A queues once, clears crouch, holding does not repeat, release rearms, menus retain A\n");fflush(logfile);}
 }
