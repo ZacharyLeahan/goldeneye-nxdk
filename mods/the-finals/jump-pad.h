@@ -48,7 +48,7 @@ static void padBeforeVertical(void){
  if(gadget.cooldown<=0&&d<PAD_RADIUS+8&&fabsf(PF(140)-gadget.position.y)<8&&PF(152)<=.6f&&fabsf(PF(140)-PF(144))<2){
   float head=fmaxf(PF(13940),120.f)+14.f;
   if(jumpCeiling(PF(140)+head+80)>PF(140)+head+8){
-   PI(184)=PI(14004)=2;PF(140)+=.05f;PF(152)=PAD_IMPULSE;jumpActive=1;jumpCooldown=12;gadget.flight=1;gadget.cooldown=45;gadget.pulse=1;gadget.launches++;
+   jumpOriginFloor=PF(144);PI(184)=PI(14004)=2;PF(140)+=.05f;PF(152)=PAD_IMPULSE;jumpActive=1;jumpCooldown=12;gadget.flight=1;gadget.cooldown=45;gadget.pulse=1;gadget.launches++;
    if(logfile){fprintf(logfile,"pad launch=%d foot=%.2f impulse=%.2f\n",gadget.launches,PF(140),PF(152));fflush(logfile);}
   }else gadget.cooldown=20;
  }
@@ -64,8 +64,7 @@ static int padTryUpper(JumpVec*to,void**tile,int native){
 }
 static void padPrepareVertical(int*useHeight,float*offset){
  if(!gadget.flight||!jumpAllowed())return;
- float support=-INFINITY;static const float ring[9][2]={{0,0},{26,0},{-26,0},{0,26},{0,-26},{18,18},{18,-18},{-18,18},{-18,-18}};
- for(int i=0;i<9;i++){float y;void*t=floorBelow(PF(1864)+ring[i][0],PF(140)+1,PF(1872)+ring[i][1],&y);if(t&&isfinite(y))support=fmaxf(support,y);}
+ int uniform;float support=traversalFloorSupport(&uniform);
  if(isfinite(support)){PF(144)=support;*useHeight=1;*offset=0;}
 }
 static void padAfterVertical(void){if(gadget.flight&&PF(140)<=PF(144)+.2f&&PF(152)<=0){gadget.flight=0;if(logfile){fprintf(logfile,"pad landed floor=%.2f\n",PF(144));fflush(logfile);}}}

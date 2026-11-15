@@ -77,7 +77,7 @@ Original extension code is provided under the repository's MIT license. Upstream
 
 A presses enqueue a request from the input adapter. The simulation-thread vertical-movement hook accepts takeoff only when grounded, alive, unpaused, outside menus/cinematics/tanks, and not frozen by a match countdown. Native vertical velocity receives an impulse of 5.8; the engine retains gravity, horizontal movement, floor following, landing, and collision/body-position updates. There is no extra jump while airborne or automatic repeat while A is held.
 
-Before ascent, nine upward probes across the body footprint check loaded room geometry and occupied-room dynamic doors/scenery. Low standing clearance rejects takeoff; a ceiling contact stops upward velocity. These are conservative sampled clearance checks, not a new continuous capsule collision engine or a mantling system. The wheel, aim profile and B crouch remain intact.
+Before ascent, 17 upward probes across the body footprint check loaded room geometry and occupied-room dynamic doors/scenery. Low standing clearance rejects takeoff; a ceiling contact stops upward velocity. These are conservative sampled clearance checks, not a new continuous capsule collision engine or a mantling system. The wheel, aim profile and B crouch remain intact.
 
 Jump tests use GE32_JUMP_TEST=1. Add GE32_JUMP_MOVING_TEST=1 for scripted forward/back movement. GE32_JUMP_CEILING_TEST=1 temporarily increases the test impulse to reach a real ceiling; it must never be used for normal play. None of these test flags should be set for ordinary gameplay.
 
@@ -122,3 +122,11 @@ Offline acceptance: set GE32_PAD_TEST=1 and GE32_REGRESSION_PRACTICE=1. Add GE32
 ## Neutral equipment-wheel center
 
 Opening LB highlights the equipped item if it is represented in the wheel. A deliberate gentle stick nudge or returning from a sector enters the empty center. Releasing LB from center keeps the current item; recentering and releasing on the same frame also cancels. Move outward again to select an item. Opening and releasing an unchanged item does not enqueue a redundant weapon change. The wheel uses icons for every item and shows only the highlighted item’s name above it. The center stays transparent, with no text panel or repeated equipped labels.
+
+## Temple edge collision and movement stress coverage
+
+Ledge and added-jump traversal retains a shared support/collision context until the full body has a stable landing. Returning to the upper floor restores its native navigation tile before ordinary collision runs. Briefly touching the lip no longer ends traversal while the body still straddles the opening.
+
+A 16-point circular footprint plus the center covers the body’s front, back and sides. Horizontal sweeps and vertical destination probes include the toe region, and collision geometry is prepared for intersected rooms independently of camera visibility. Gravity, movement input and landing clamps remain native. These are conservative sampled checks, not a continuous capsule collision engine.
+
+Set GE32_TEMPLE_STRESS=1 with GE32_REGRESSION_PRACTICE=1 for the offline 64-route perimeter suite: four edges, corners, retreat timings, strafing, sprint, crouch, jumps and eight pad launch directions. GE32_TEMPLE_DEFERRED_AUDIT=1 checks the recorded paths against background geometry after each route; GE32_TEMPLE_GEOMETRY_AUDIT=1 checks it during movement. The deferred version avoids preparing collision caches ahead of the tested movement. GE32_TEMPLE_VISUAL_TEST=1 writes a local renderer readback for a representative room transition. GE32_TEMPLE_PROBE=1 writes local floor/room diagnostic grids and exits. All flags are offline-only and leave normal gameplay unchanged when unset.

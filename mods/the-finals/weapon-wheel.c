@@ -44,17 +44,18 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "ledge-drop-test.h"
 #include "jump-pad.h"
 #include "jump-pad-test.h"
+#include "temple-movement-test.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
  int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
  if(isLocal&&getenv("GE32_REGRESSION_PRACTICE")&&!getenv("GE32_PAD_LIVE_TEST")&&jumpAllowed())*(int*)(base+0x303000+618564)=1;
  if(isLocal&&getenv("GE32_DROP_TEST")){x=0;y=0;}
- if(isLocal)padTestBefore(&x,&y,&buttons);
+ if(isLocal){padTestBefore(&x,&y,&buttons);templeStressBefore(&x,&y,&buttons);}
  if(isLocal){combatTestBefore(&buttons);dropTestBefore(&buttons);}
  unsigned short rawButtons=buttons;
  if(isLocal){padBefore(&buttons,&oldbuttons);combatBefore(&buttons,&oldbuttons);}
  originalTick(x,y,buttons,oldbuttons);
- if(isLocal){combatAfter(rawButtons);combatTestAfter(rawButtons);dropTestAfter();padTestAfter();}
+ if(isLocal){combatAfter(rawButtons);combatTestAfter(rawButtons);dropTestAfter();padTestAfter();templeStressAfter();}
  int n=localIndex();if(NUMBER!=n||!CURRENT||CURRENT!=PLAYERS[n])return;
  static int testTicks=0;
  if(getenv("GE32_WHEEL_TEST")){
@@ -74,7 +75,7 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  }
  InventorySnapshot next={0};next.current=padCarrying?PAD_ITEM:FN(int(*)(int),0x1000+421920)(0);next.local=n;next.valid=1;next.allowJump=jumpAllowed();next.tickThread=GetCurrentThreadId();
  for(int id=4;id<=25;id++){if(id!=23&&FN(int(*)(int),0x1000+43904)(id))next.ids[next.count++]=id;}
- next.ids[next.count++]=PAD_ITEM;publishInventory(n,&next);padPublish();
+ next.ids[next.count++]=PAD_ITEM;publishInventory(n,&next);padPublish();padTestPublishActions();
 }
 static int installGameHook(void){
  unsigned char expected[]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x57,0x56,0x53};
@@ -130,7 +131,7 @@ static void wheelUpdate(int lb,int back,float x,float y){
   }
  }
  if(!lb&&previousLB){
-  if(openWheel&&!cancelled&&choice>=0&&choice<count&&available(ids[choice])&&ids[choice]!=oldCurrent)equip(ids[choice]);
+  if(openWheel&&!cancelled&&choice>=0&&choice<count&&available(ids[choice])&&wheelStickEngaged&&ids[choice]!=current())equip(ids[choice]);
   openWheel=0;cancelled=0;
  }
  previousLB=lb;
@@ -146,7 +147,8 @@ static void padTestCapture(void*w,const char*name){
 static void padTestRenderTick(void*w){
  if(!getenv("GE32_PAD_TEST"))return;
  int action=InterlockedExchange(&padTestRenderAction,0);static int rtFrames;
- if(action==1||action==3){wheelUpdate(1,0,0,0);int index=-1;for(int i=0;i<count;i++)if(ids[i]==(action==1?PAD_ITEM:5))index=i;testAssert(index>=0,"jump pad available in equipment wheel");float a=-1.57079632679f+index*6.28318530718f/count;wheelUpdate(1,0,cosf(a),sinf(a));if(getenv("GE32_PAD_VISUAL_TEST")&&useProgram&&activeTexture){draw(w);padTestCapture(w,"pad-wheel.bmp");}wheelUpdate(0,0,cosf(a),sinf(a));}
+ if(action==4){InterlockedExchange(&padCancelRequest,1);wheelUpdate(1,0,0,0);}
+ if(action==1||action==3||action==5){wheelUpdate(1,0,0,0);int index=-1;for(int i=0;i<count;i++)if(ids[i]==(action==3?5:PAD_ITEM))index=i;testAssert(index>=0,"jump pad available in equipment wheel");float a=-1.57079632679f+index*6.28318530718f/count;wheelUpdate(1,0,cosf(a),sinf(a));if(getenv("GE32_PAD_VISUAL_TEST")&&useProgram&&activeTexture){draw(w);padTestCapture(w,"pad-wheel.bmp");}wheelUpdate(0,0,cosf(a),sinf(a));}
  if(action==2){padTrigger(0,1);padTrigger(1,1);rtFrames=20;}
  if(rtFrames){padTrigger(1,1);if(!--rtFrames)padTrigger(0,1);}
  if(useProgram&&activeTexture){while(glGetError()!=GL_NO_ERROR){}drawPad(w);if(getenv("GE32_PAD_VISUAL_TEST")){static int captured;if(!captured&&padTestPhase==2&&padTestWait>60){padTestCapture(w,"pad-carry.bmp");captured=1;}if(captured==1&&padTestPhase==4&&padSnapshot().visible){padTestCapture(w,"pad-placed.bmp");captured=2;}}testAssert(glGetError()==GL_NO_ERROR,"jump-pad preview/world/HUD render without GL errors");}
@@ -202,6 +204,7 @@ static void swapHook(void*w){
  float x=pad?getAxis(pad,2)/32767.f:0,y=pad?getAxis(pad,3)/32767.f:0;
  wheelUpdate(lb,back,x,y);
  if(useProgram&&activeTexture){drawPad(w);if(openWheel)draw(w);}
+ if(getenv("GE32_TEMPLE_VISUAL_TEST")&&InterlockedExchange(&templeFrameCapture,0))padTestCapture(w,"temple-camera-transition.bmp");
  swapWindow(w);
 }
 static int replaceImport(const char*name,void*replacement,void**old){

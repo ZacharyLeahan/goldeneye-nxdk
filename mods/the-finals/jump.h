@@ -7,7 +7,7 @@ typedef struct {float x,y,z;} JumpVec;
 typedef struct {JumpVec position,normal;void*v[4];short flags[4];} JumpHit;
 static volatile LONG pendingJump;
 static int jumpAHeld,jumpActive,jumpCount,ceilingStops;
-static float jumpCooldown;
+static float jumpCooldown,jumpOriginFloor;
 static unsigned short jumpTestMotion;
 static void *jumpPlayer;
 static void (*originalVertical)(int,float);
@@ -23,7 +23,7 @@ static unsigned char jumpA(unsigned char raw,int allowed,volatile LONG*latch){
  jumpAHeld=raw!=0;
  return allowed?0:raw;
 }
-/* Nine upward traces cover center, axial and diagonal body extents. Search
+/* Seventeen upward traces cover the center and full circular body extent. Search
  * every loaded room, not just the floor tile, so neighboring-room ceilings
  * across portals also participate. Dynamic doors/scenery use engine tracing. */
 /* Native render collision bounds are lazy. Prepare the occupied room on the
@@ -34,6 +34,18 @@ static int jumpRoomReady(int room){
  if(!*bounds){FN(int(*)(int),0x1000+8064)(room);FN(void(*)(int),0x1000+11024)(room);}
  return *bounds!=NULL;
 }
+/* Collision must not depend on which direction the camera happened to render.
+ * Room bounds are in scaled BG coordinates; prepare only intersected geometry. */
+static int collisionPrepareBox(JumpVec low,JumpVec high){
+ int total=*(int*)(base+0x228000+4208);float scale=*(float*)(base+0x228000+4252);if(total<1||total>2048||!isfinite(scale)||scale<=0)return 0;
+ for(int r=1;r<total;r++){
+  unsigned char*p=(void*)(base+0x303000+27264+r*0x68);if(*(int*)(p+36)<=0)continue;
+  float*lo=(void*)(p+0x50),*hi=(void*)(p+0x5c);float a[3]={low.x,low.y,low.z},b[3]={high.x,high.y,high.z};int overlap=1;
+  for(int i=0;i<3;i++){if(!isfinite(lo[i])||!isfinite(hi[i])||lo[i]>hi[i])return 0;if(a[i]*scale>hi[i]+1||b[i]*scale<lo[i]-1)overlap=0;}
+  if(overlap&&!jumpRoomReady(r))return 0;
+ }
+ return 1;
+}
 static float jumpCeiling(float top){
  int total=*(int*)(base+0x228000+4208);if(total<1||total>2048)return -INFINITY;
  void*tile=PP(1856);void*prop=PP(200);if(!tile||!prop)return -INFINITY;
@@ -42,11 +54,11 @@ static float jumpCeiling(float top){
  if(!jumpRoomReady(room))return -INFINITY;
  float scale=*(float*)(base+0x228000+4252);if(!isfinite(scale)||scale<=0)return -INFINITY;
  float ceiling=INFINITY,foot=PF(140),head=fmaxf(PF(13940),120.f)+14.f;
- float x=PF(1864),z=PF(1872);int occupied[64];for(int i=0;i<64;i++)occupied[i]=-1;
+ float x=PF(1864),z=PF(1872);if(!collisionPrepareBox((JumpVec){x-31,foot+.1f,z-31},(JumpVec){x+31,fmaxf(top,foot+head+4),z+31}))return -INFINITY;int occupied[64];for(int i=0;i<64;i++)occupied[i]=-1;
  FN(void(*)(void*,int*),0x1000+275920)(prop,occupied);
- static const float offsets[9][2]={{0,0},{26,0},{-26,0},{0,26},{0,-26},{18,18},{18,-18},{-18,18},{-18,-18}};
- for(int ray=0;ray<9;ray++){
-  JumpVec from={x+offsets[ray][0],foot+32,z+offsets[ray][1]},to={from.x,fmaxf(top,foot+head+4),from.z};
+ for(int ray=0;ray<17;ray++){
+  float ox=0,oz=0;if(ray){float angle=(ray-1)*.3926990817f;ox=31*cosf(angle);oz=31*sinf(angle);}
+  JumpVec from={x+ox,foot+.25f,z+oz},to={from.x,fmaxf(top,foot+head+4),from.z};
   for(int r=0;r<total;r++){
    if(!*(void**)(rooms+r*0x68+0x40))continue;
    JumpHit hit={0};
@@ -54,8 +66,8 @@ static float jumpCeiling(float top){
     float y=hit.position.y/scale;if(isfinite(y)&&y>from.y-.5f&&y<ceiling)ceiling=y;
    }
   }
-  JumpVec position,normal;
-  if(FN(int(*)(void*,JumpVec*,JumpVec*,unsigned,JumpVec*,JumpVec*,int*),0x1000+721344)(prop,&from,&to,0x13,&position,&normal,occupied)){
+  JumpVec position,normal,dynamicFrom=from;dynamicFrom.y=foot+32;
+  if(FN(int(*)(void*,JumpVec*,JumpVec*,unsigned,JumpVec*,JumpVec*,int*),0x1000+721344)(prop,&dynamicFrom,&to,0x13,&position,&normal,occupied)){
    if(isfinite(position.y)&&position.y>from.y-.5f&&position.y<ceiling)ceiling=position.y;
   }
  }
@@ -74,7 +86,7 @@ static void jumpBeforeVertical(void){
   float head=fmaxf(PF(13940),120.f)+14.f;
   float ceiling=jumpCeiling(ground+head+70.f);
   if(ceiling>ground+head+5.f){
-   PI(184)=2;PF(140)=fmaxf(foot,ground)+.05f;PF(152)=getenv("GE32_JUMP_CEILING_TEST")?18.f:5.8f;
+   jumpOriginFloor=ground;PI(184)=2;PF(140)=fmaxf(foot,ground)+.05f;PF(152)=getenv("GE32_JUMP_CEILING_TEST")?18.f:5.8f;
    jumpActive=1;jumpCount++;jumpCooldown=8;
    if(logfile){fprintf(logfile,"jump takeoff=%d ground=%.2f ceiling=%.2f\n",jumpCount,ground,ceiling);fflush(logfile);}
   }else if(logfile){fprintf(logfile,"jump blocked: insufficient standing headroom\n");fflush(logfile);}
