@@ -45,11 +45,13 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "ledge-drop-test.h"
 #include "jump-pad.h"
 #include "grenades.h"
+#include "slide.h"
 #include "jump-pad-test.h"
 #include "temple-movement-test.h"
 #include "health-bars.h"
 #include "health-bars-test.h"
 #include "grenades-test.h"
+#include "movement-test.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
  int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
@@ -57,14 +59,15 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  if(isLocal&&getenv("GE32_DROP_TEST")){x=0;y=0;}
  if(isLocal){padTestBefore(&x,&y,&buttons);templeStressBefore(&x,&y,&buttons);}
  if(isLocal){combatTestBefore(&buttons);dropTestBefore(&buttons);}
+ if(isLocal)movementTestBefore(&x,&y,&buttons);
  unsigned short rawButtons=buttons;
  if(isLocal){healthBegin();if(getenv("GE32_HEALTH_TEST"))x=y=0;healthTestBefore(&buttons);}
  if(isLocal){grenadeLoadout();grenadeTestBefore(&x,&y,&buttons);}
- if(isLocal){padBefore(&buttons,&oldbuttons);combatBefore(&buttons,&oldbuttons);}
+ if(isLocal){padBefore(&buttons,&oldbuttons);combatBefore(&buttons,&oldbuttons);slideBefore();}
  originalTick(x,y,buttons,oldbuttons);
  if(isLocal&&getenv("GE32_GRENADE_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(grenadeTestFire);
  if(isLocal&&getenv("GE32_HEALTH_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(healthTestFire);
- if(isLocal){combatAfter(rawButtons);combatTestAfter(rawButtons);dropTestAfter();padTestAfter();templeStressAfter();}
+ if(isLocal){combatAfter(rawButtons);slideAfter();combatTestAfter(rawButtons);dropTestAfter();padTestAfter();templeStressAfter();}
  int n=localIndex();if(NUMBER!=n||!CURRENT||CURRENT!=PLAYERS[n])return;
  static int testTicks=0;
  if(getenv("GE32_WHEEL_TEST")){
@@ -107,6 +110,7 @@ static unsigned char buttonHook(void *p,int b){
   if(b==1&&padCarrying&&!openWheel)return 0;
   if(b==9)return 0; /* LB belongs to the wheel, not aim */
   if(openWheel && (b==0||b==1||b==10)){if(b==0)jumpAHeld=getButton(p,b)!=0;return 0;}
+  if(b==1)slideButton(getButton(p,b),snapshotRead().allowJump&&!openWheel);
   if(b==0){int slot=*(int*)(base+0x228000+203956);if(slot<0||slot>3)slot=0;return jumpA(getButton(p,b),snapshotRead().allowJump&&!FN(int(*)(void),0x1000+1453264)(),(volatile LONG*)(base+0x303000+1983488+slot*4));}
  }
  return getButton(p,b);
@@ -220,6 +224,7 @@ static void swapHook(void*w){
  wheelUpdate(lb,back,x,y);
  if(useProgram&&activeTexture){drawPad(w);drawHealth(w);if(openWheel)draw(w);}
  healthTestRender(w);
+ if(getenv("GE32_MOVEMENT_VISUAL_TEST")&&InterlockedExchange(&movementCapture,0))padTestCapture(w,"movement-slide.bmp");
  if(getenv("GE32_TEMPLE_VISUAL_TEST")&&InterlockedExchange(&templeFrameCapture,0))padTestCapture(w,"temple-camera-transition.bmp");
  swapWindow(w);
 }
@@ -242,7 +247,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
  if(reason==DLL_PROCESS_ATTACH){
   DisableThreadLibraryCalls(module);base=(uintptr_t)GetModuleHandleA(NULL);
   logfile=fopen("weapon-wheel.log","w");
-  if(getenv("GE32_STAND_TEST")){testJumpInput();testCombatInput();testPadInput();ExitProcess(0);}
+  if(getenv("GE32_STAND_TEST")){testJumpInput();testCombatInput();testPadInput();testSlideInput();ExitProcess(0);}
   HMODULE sdl=GetModuleHandleA("SDL2.dll");
   getSize=(void*)GetProcAddress(sdl,"SDL_GL_GetDrawableSize");
   int g=installGameHook();

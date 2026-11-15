@@ -31,7 +31,7 @@ The profile preserves unrelated settings and makes an INI backup. It uses Custom
 | Release LB | Equip the highlighted item; neutral center keeps current equipment |
 | B with wheel open | Cancel selection |
 | LT | Aim |
-| B during gameplay | Toggle crouch; cancel when holding the pad |
+| B during gameplay | Slide from a grounded sprint; otherwise toggle crouch; cancel when holding the pad |
 | A | Jump; clear crouch first; one jump per press |
 | Y | Interact / open doors |
 | Left-stick click while moving forward | Toggle sprint; stop/aim/fire/crouch/wheel/slap cancels |
@@ -46,7 +46,9 @@ The wheel does not pause gameplay. Fire and look input are suppressed while sele
 ## Files
 
 - weapon-wheel.c: game-thread hook, inventory snapshot/queue, controller handling, regression tests.
-- combat.h: sprint ramp, input edges, temporary slapper state, ammunition-safe gun restoration.
+- slide.h: sprint-crouch momentum, deceleration, steering and contextual cancellation.
+- movement-test.h: native speed telemetry and slide integration fixtures.
+- combat.h: run-speed calibration, diagonal normalization, sprint ramp, input edges, temporary slapper state, ammunition-safe gun restoration.
 - combat-test.h: offline sprint/slap integration checks.
 - jump.h: grounded takeoff, native vertical integration, ceiling checks, input/physics tests.
 - jump-pad.h: carried gadget, floor validation, native launch, upper-floor traversal, input edges and render snapshot.
@@ -93,13 +95,13 @@ Cross-PC replication is not yet verified. All physics work stays in the local si
 
 ## Sprint and quick slap
 
-Click the left stick while moving forward to toggle a smooth ramp up to 1.35 times the engine's current movement speed. This scales the native forward/strafe movement scalars on the simulation thread; it does not teleport the player or replace collision handling. Stopping, backing up, aiming, firing, crouching, opening the wheel, or starting a slap cancels sprint. Sprint is unavailable in menus, cinematics, tank mode, match freezes, or death. There is no stamina system or slide mechanic.
+Click the left stick while moving forward to toggle a smooth ramp to the calibrated sprint pace. This scales the native forward/strafe movement scalars on the simulation thread; it does not teleport the player or replace collision handling. Stopping, backing up, aiming, firing, crouching, opening the wheel, or starting a slap cancels sprint. Sprint is unavailable in menus, cinematics, tank mode, match freezes, or death. There is no stamina system or slide mechanic.
 
 Click the right stick for a single native slapper attack. The simulation temporarily selects the palm model and fist item, runs the engine's existing slap animation/strike dispatch, and restores both hands, partially loaded magazines, reserve ammunition, and previous-weapon history. Sniper ownership does not substitute a rifle-butt animation. A wheel selection made during the slap is deferred until the slap ends. Holding the stick button does not repeat attacks.
 
 The slap is accepted from ready/fire/recoil states; a weapon transition or reload can temporarily prevent starting it. Pause freezes the action phase; death/tank/stage changes clear the temporary action state. Cross-PC replication and real-target damage still need a multiplayer/playtest pass; automated checks verify native strike dispatch without a spawned target.
 
-Set GE32_COMBAT_TEST=1 only for the offline sprint/slap integration harness. It supplies test weapons and ammunition, runs movement and strike cases, then exits. Never enable it for normal play. GE32_STAND_TEST=1 also checks left/right-stick button press/hold/release edges before the game starts.
+Set GE32_COMBAT_TEST=1 with -level_09 (Bunker1) only for the offline sprint/slap integration harness. The forced-dual setup in Temple practice has a pre-existing native texture-loading crash; use the mission fixture for the full six-case check. It supplies test weapons and ammunition, runs movement and strike cases, then exits. Never enable it for normal play. GE32_STAND_TEST=1 also checks left/right-stick button press/hold/release edges before the game starts.
 
 ## Ledge drops
 
@@ -164,3 +166,15 @@ Target health uses a dark gunmetal bezel, eight green health cells (amber/red at
 Jump Pad stays at the bottom of LB and native GoldenEye hand grenades stay on the right. Guns share the upper/left half; a single gun appears at the top. The right slot shows remaining grenades and remains visible, dimmed at zero. Empty grenades cannot be equipped; native ammo pickups re-enable them. Each playable local life starts with three, awarded once after gameplay becomes available; throwing or changing equipment never tops them up. Native throw animation, fuse, projectile and damage are retained. This is hand-grenade item 26; the virtual pad uses a separate ID outside native weapons.
 
 Run GE32_GRENADE_TEST=1 with GE32_REGRESSION_PRACTICE=1 only in an offline test installation. It exercises wheel selection, three real native throws, depletion, empty-slot rejection, switching back through the pad/guns, and a native-inventory ammo-pickup fixture. Cross-PC grenade replication remains unverified.
+
+## Movement pace and sprint-crouch slide
+
+The movement preset aims for a balanced Medium-style feel rather than claiming an exact conversion between the two engines. Assuming approximately 100 GoldenEye units per meter, isolated native displacement measured about 4.73 m/s forward running, 6.37 m/s sprinting and 4.52 m/s diagonally running. Native gait is nonlinear, so run scale 1.052 and sprint scalar ratio 1.46 were calibrated from actual displacement. The sprint ramp remains roughly 0.15 seconds. Diagonal input is normalized so it cannot provide the original strafe-running speed bonus; native shot-push vectors are excluded from that normalization.
+
+From a moving, grounded sprint, tap B to enter a low crouched slide. It retains the entry heading and momentum even if the stick is released, slows to 30% of entry speed over at most 0.85 seconds, and permits limited steering. Reverse movement brakes the slide. A cancels into the existing native jump and clears crouch; another B ends it through the normal stance toggle. A normal completion leaves the player crouched. Wheel/menu/death, melee, carried pad, leaving the ground and sustained wall blockage end the slide. A fresh B press is required; it cannot be held or queued in mid-air to repeatedly slide. Stationary crouch and ordinary running crouch remain available.
+
+All motion goes through the native movement scalars and existing collision/floor/gravity paths; no position teleport or camera-only offset is used. The custom controller adapter can set crouch before the gameplay hook runs, so entry uses the preceding sprint state rather than requiring standing stance on the same tick as B.
+
+Offline acceptance: GE32_MOVEMENT_TEST=1 plus GE32_REGRESSION_PRACTICE=1 measures native pace and exercises slide/coast/cancellation. GE32_MOVEMENT_VISUAL_TEST=1 writes a local renderer readback. The Temple stress suite now includes twelve sprint-slide opening approaches as well as the original edge/jump/crouch/pad cases. Flags must be unset for normal play. Cross-PC slide replication is not verified.
+
+Reference context: Embark's [12.0 release notes](https://www.reachthefinals.com/patchnotes/12-00) document current build-dependent movement speeds, and [10.3 notes](https://www.reachthefinals.com/patchnotes/10-30) describe a slide-trigger velocity threshold change. These do not publish a complete slide friction curve. Supplied videos were reviewed but do not establish an exact slide duration/speed measurement; the extension's slide curve is a tuning choice.
