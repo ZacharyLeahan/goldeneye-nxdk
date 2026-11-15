@@ -1,3 +1,5 @@
+> **Downstream fork:** The Finals-inspired controller and GE32 weapon-wheel additions are documented in [DOWNSTREAM.md](DOWNSTREAM.md). The upstream PC-port documentation follows below.
+
 # GoldenEye 007 PC Port
 
 [![CI](https://github.com/jkdansereau/goldeneye-pc-port/actions/workflows/ci.yml/badge.svg)](https://github.com/jkdansereau/goldeneye-pc-port/actions/workflows/ci.yml)

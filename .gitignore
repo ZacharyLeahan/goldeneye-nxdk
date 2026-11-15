@@ -205,3 +205,10 @@ tools_pc/sweep-captures/**/*.ppm
 # referenced by no project tooling. Never commit.
 /Python/
 docs/media/*.mp4
+
+# Downstream ROM safety: all common dump formats, including byte-swapped ROMs.
+*.[zZnNvV]64
+*.[rR][oO][mM]
+# Local multiplayer runtime and downloaded release bundles.
+/GE32/
+/GE32*.zip

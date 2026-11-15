@@ -1,0 +1,13 @@
+build/
+runtime/
+visual-tests/
+test-diagnostics/
+*.exe
+*.dll
+*.lib
+*.pdb
+*.zip
+*.log
+*.bmp
+*.eep
+ge007*.ini
