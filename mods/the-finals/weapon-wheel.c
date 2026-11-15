@@ -24,7 +24,7 @@ static FILE *logfile;
 #define CURRENT (*(void**)(base+0x303000+392272))
 #define NUMBER (*(int*)(base+0x362c44))
 #define PLAYERS ((void**)(base+0x303000+399456))
-typedef struct {int ids[32],count,current,local,valid;DWORD tickThread;} InventorySnapshot;
+typedef struct {int ids[32],count,current,local,valid,allowJump;DWORD tickThread;} InventorySnapshot;
 static InventorySnapshot published;
 static SRWLOCK snapshotLock=SRWLOCK_INIT;
 static volatile LONG pendingWeapon=-1,gameTestsReady,testAction;
@@ -37,8 +37,17 @@ static int available(int id){InventorySnapshot s=snapshotRead();for(int j=0;j<s.
 static int current(void){return snapshotRead().current;}
 static void equip(int id){InterlockedExchange(&pendingWeapon,id);if(logfile){fprintf(logfile,"queue weapon=%d\n",id);fflush(logfile);}}
 static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=localIndex())return;AcquireSRWLockExclusive(&snapshotLock);published=*s;ReleaseSRWLockExclusive(&snapshotLock);}
+#include "jump.h"
+#include "combat.h"
+#include "combat-test.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
+ if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
+ int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
+ if(isLocal)combatTestBefore(&buttons);
+ unsigned short rawButtons=buttons;
+ if(isLocal)combatBefore(&buttons,&oldbuttons);
  originalTick(x,y,buttons,oldbuttons);
+ if(isLocal){combatAfter(rawButtons);combatTestAfter(rawButtons);}
  int n=localIndex();if(NUMBER!=n||!CURRENT||CURRENT!=PLAYERS[n])return;
  static int testTicks=0;
  if(getenv("GE32_WHEEL_TEST")){
@@ -49,12 +58,12 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
   if(action==3){FN(void(*)(int),0x1000+44864)(5);FN(void(*)(int),0x1000+44864)(8);}
  }
  int wanted=InterlockedExchange(&pendingWeapon,-1);
- if(wanted>=4&&wanted<=25&&FN(int(*)(int),0x1000+43904)(wanted)){
+ if(wanted>=4&&wanted<=25&&!combatDeferWeapon(wanted)&&FN(int(*)(int),0x1000+43904)(wanted)){
   if(logfile){fprintf(logfile,"game accepted weapon=%d\n",wanted);fflush(logfile);}
   FN(void(*)(int,int,int),0x1000+420240)(0,wanted,1);
   FN(void(*)(int,int,int),0x1000+420240)(1,0,1);
  }
- InventorySnapshot next={0};next.current=FN(int(*)(int),0x1000+421920)(0);next.local=n;next.valid=1;next.tickThread=GetCurrentThreadId();
+ InventorySnapshot next={0};next.current=FN(int(*)(int),0x1000+421920)(0);next.local=n;next.valid=1;next.allowJump=jumpAllowed();next.tickThread=GetCurrentThreadId();
  for(int id=4;id<=25;id++){if(id!=23&&FN(int(*)(int),0x1000+43904)(id))next.ids[next.count++]=id;}
  publishInventory(n,&next);
 }
@@ -69,30 +78,13 @@ static int installGameHook(void){
 }
 static const char *names[]={"Unarmed","Fist","Knife","Throwing knife","PP7","PP7 silenced","DD44 Dostovei","Klobb","KF7 Soviet","ZMG","D5K Deutsche","D5K silenced","Phantom","AR33","RC-P90","Shotgun","Automatic shotgun","Sniper rifle","Cougar Magnum","Golden Gun","Silver PP7","Gold PP7","Moonraker Laser","Watch Laser","Grenade Launcher","Rocket Launcher"};
 static void inventory(void){InventorySnapshot s=snapshotRead();count=s.count;memcpy(ids,s.ids,sizeof(ids));}
-/* A cancels toggle crouch on the input thread. Consume that A press until
- * release so standing up does not also interact with a door or object. */
-static int standConsumed[4];
-static unsigned char standA(unsigned char pressed,volatile LONG*latch,int*consumed){
- if(!pressed){*consumed=0;return 0;}
- if(*latch){InterlockedExchange(latch,0);*consumed=1;}
- return *consumed?0:pressed;
-}
-static void testStandA(void){
- volatile LONG latch=1;int consumed=0;
- if(standA(1,&latch,&consumed)!=0||latch!=0)ExitProcess(3);
- if(standA(1,&latch,&consumed)!=0)ExitProcess(3);
- if(standA(0,&latch,&consumed)!=0||consumed)ExitProcess(3);
- if(standA(1,&latch,&consumed)!=1)ExitProcess(3);
- standA(0,&latch,&consumed);latch=1;
- if(standA(1,&latch,&consumed)!=0||latch)ExitProcess(3);
- if(logfile){fprintf(logfile,"PASS: A clears crouch, held A stays consumed, release resets, standing A interacts, repeated crouch works\n");fflush(logfile);}
-}
 static unsigned char buttonHook(void *p,int b){
  if(!pad)pad=p;
  if(p==pad && playing()){
+  if(b==7||b==8)return combatButton(b,getButton(p,b),snapshotRead().allowJump&&!openWheel&&!FN(int(*)(void),0x1000+1453264)());
   if(b==9)return 0; /* LB belongs to the wheel, not aim */
-  if(openWheel && (b==0||b==1||b==10))return 0;
-  if(b==0){int slot=*(int*)(base+0x228000+203956);if(slot<0||slot>3)slot=0;return standA(getButton(p,b),(volatile LONG*)(base+0x303000+1983488+slot*4),&standConsumed[slot]);}
+  if(openWheel && (b==0||b==1||b==10)){if(b==0)jumpAHeld=getButton(p,b)!=0;return 0;}
+  if(b==0){int slot=*(int*)(base+0x228000+203956);if(slot<0||slot>3)slot=0;return jumpA(getButton(p,b),snapshotRead().allowJump&&!FN(int(*)(void),0x1000+1453264)(),(volatile LONG*)(base+0x303000+1983488+slot*4));}
  }
  return getButton(p,b);
 }
@@ -188,14 +180,15 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
  if(reason==DLL_PROCESS_ATTACH){
   DisableThreadLibraryCalls(module);base=(uintptr_t)GetModuleHandleA(NULL);
   logfile=fopen("weapon-wheel.log","w");
-  if(getenv("GE32_STAND_TEST")){testStandA();ExitProcess(0);}
+  if(getenv("GE32_STAND_TEST")){testJumpInput();testCombatInput();ExitProcess(0);}
   HMODULE sdl=GetModuleHandleA("SDL2.dll");
   getSize=(void*)GetProcAddress(sdl,"SDL_GL_GetDrawableSize");
   int g=installGameHook();
+  int j=installJumpHook();
   int a=replaceImport("SDL_GameControllerGetButton",buttonHook,(void**)&getButton);
   int b=replaceImport("SDL_GameControllerGetAxis",axisHook,(void**)&getAxis);
   int c=replaceImport("SDL_GL_SwapWindow",swapHook,(void**)&swapWindow);
-  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d button=%d axis=%d swap=%d\n",g,a,b,c);fflush(logfile);}
+  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d button=%d axis=%d swap=%d\n",g,j,a,b,c);fflush(logfile);}
  }
  return TRUE;
 }
