@@ -22,5 +22,9 @@ int main(int argc,char**argv){
   char filename[2048];snprintf(filename,sizeof(filename),"%s/wheel-%d.bmp",argc>1?argv[1]:".",shot);saveBitmap(filename,1280,720);
   unsigned err=glGetError();printf("preview %d: owned=%d selected=%d GL=%u\n",shot,count,choice,err);if(err)return 13;
  }
+ for(int shot=0;shot<6;shot++){
+  HealthSnapshot s={0};s.count=1;HealthBar*b=&s.bars[0];b->x=.5f;b->y=.40f;b->hp=shot==0?1:shot==1?.65f:shot==2?.4f:shot==3?.15f:.75f;b->armor=shot==4?.6f:0;b->trail=b->hp+.1f;b->alpha=shot==5?.25f:1;snprintf(b->name,sizeof(b->name),"GUARD %d",shot+1);if(shot&1)glClearColor(.80f,.77f,.65f,1);else glClearColor(.075f,.09f,.065f,1);glClear(GL_COLOR_BUFFER_BIT);drawHealthSnapshot(w,s);glFinish();
+  char filename[2048];snprintf(filename,sizeof(filename),"%s/health-style-%d.bmp",argc>1?argv[1]:".",shot);saveBitmap(filename,1280,720);unsigned err=glGetError();printf("health preview %d: HP=%.2f armor=%.2f alpha=%.2f GL=%u\n",shot,b->hp,b->armor,b->alpha,err);if(err)return 14;
+ }
  return 0;
 }

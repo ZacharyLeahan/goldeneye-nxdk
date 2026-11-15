@@ -54,6 +54,7 @@ The wheel does not pause gameplay. Fire and look input are suppressed while sele
 - health-bars.h: confirmed native-hit observer, true health/armor reads, target lifecycle and locked render snapshots.
 - health-bars-render.h: world-anchored segmented bars and compact names.
 - health-bars-test.h: native gunfire, timing, armor, lifecycle, sight and mission-guard tests.
+- retro-ui.h: original 5x7 pixel lettering shared by the gadget and target gauges.
 - wheel-render.h: production renderer, font atlas, vector silhouettes, translucent layout.
 - preview.c: hidden-window visual test using the production renderer.
 - patch-character-back.py: reversible standard character-menu B-back patch.
@@ -112,9 +113,9 @@ GE32_DROP_LIVE_TEST=1 alongside GE32_DROP_TEST=1 retains three bots and adds act
 
 ## Deployable jump pad
 
-Jump Pad is always available in the LB equipment wheel beside the guns currently owned. Select it with the right stick and release LB. Aim down at a level, clear surface; a blue floor hologram marks a valid placement and red marks an invalid one. RT deploys the pad and returns to the previous gun. The placement press cannot discharge the gun, even if RT remains held. B cancels the gadget, and selecting a gun from LB also stows it. RB is unchanged.
+Jump Pad is always available in the LB equipment wheel beside the guns currently owned. Select it with the right stick and release LB. Aim down at a level, clear surface; a muted green floor preview marks a valid placement and red marks an invalid one. RT deploys the pad and returns to the previous gun. The placement press cannot discharge the gun, even if RT remains held. B cancels the gadget, and selecting a gun from LB also stows it. RB is unchanged.
 
-Walk onto the deployed pad to launch. Native gravity, momentum, air movement and sampled ceiling clearance remain active. The 26-unit impulse clears Temple’s lower-to-upper opening; steer toward the ledge after clearing its height. A pad is reusable, and placing another replaces the previous local pad. A low ceiling stops ascent. Player/stage changes clear pad state. Placement requires a supported, nearly level footprint and rejects airborne, obstructed or missing-floor positions.
+Walk onto the deployed pad to launch immediately on contact. Native gravity, momentum, air movement and sampled ceiling clearance remain active. The 26-unit impulse clears Temple’s lower-to-upper opening; steer toward the ledge after clearing its height. A pad is reusable, and placing another replaces the previous local pad. A low ceiling stops ascent. Player/stage changes clear pad state. Placement requires a supported, nearly level footprint and rejects airborne, obstructed or missing-floor positions.
 
 The pad uses original procedural geometry, a translucent preview and a carried-device drawing; no game/Embark assets are bundled. Characters use movement bounds, never render-hit caches. Native room collision bounds are prepared lazily on the simulation thread during high flight. Physics and projection are published to the drawing thread through a locked snapshot.
 
@@ -143,3 +144,13 @@ Misses, invulnerable hits and other shooters’ damage do not open the display. 
 The hit callback is signature-checked for the supported GE32 release. The game’s damage/armor/health behavior is unchanged. Cross-PC authoritative-health updates, all weapons and every map are not exhaustively verified. A remote hit awaiting replicated HP is kept briefly pending and cannot invent health or show a bar before an observed decrease.
 
 Offline tests: GE32_HEALTH_TEST=1, GE32_REGRESSION_PRACTICE=1 and GE32_PAD_LIVE_TEST=1 launch the native Temple fixture with actual targets, exercise native gunfire and then exit. GE32_HEALTH_VISUAL_TEST=1 also writes local hit/fade BMP readbacks. The fixture freezes bots, places the player and target, invokes native trigger/strike paths, and supplies eligibility/health fixtures for armor and lifecycle cases. GE32_HEALTH_GUARD_TEST=1 with -level_34 validates native mission-guard damage and armor semantics. These flags are for offline tests only and must be unset for ordinary play.
+
+## GoldenEye equipment presentation and enlarged pad
+
+The jump pad now has a 156-unit diameter (previously 96): about 63% wider, with placement support and activation matched to the octagonal deck. Sixteen floor samples and radial clearance traces reject unsupported rims and obstructed placement. The old deployment arming delay is removed. Reuse cooldown, native velocity/gravity, ceiling checks and upper-floor traversal remain active.
+
+The supplied jump-pad clip demonstrates equipment selection, carrying, floor preview, placement and returning to the gun. It ends before a complete launch arc, so it is not used to invent an airtime measurement. The tested 26-unit impulse is retained for Temple’s lower-to-upper route. An approximately 0.18-second carry/stow motion and a short deck-compression response provide equipment feedback; the gun model returns after the held device has lowered.
+
+The pad uses an original low-poly olive housing, beveled rim, fasteners, a coarse generated ribbed-rubber material and worn identification paint. Perspective-correct UV interpolation keeps the material attached to its projected geometry. The equipment-wheel icon matches the new octagonal device. The preview and interaction hints use subdued game-era colors and original pixel lettering.
+
+Target health uses a dark gunmetal bezel, eight green health cells (amber/red at lower health), a blue armor strip and small uppercase pixel labels. The 3.25-second hold, 0.20-second fade, hit detection and target lifecycle are unchanged. Names and equipment hints share original asset-free 5x7 glyphs; they do not copy or ship the game’s font.

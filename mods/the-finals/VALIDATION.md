@@ -131,3 +131,19 @@ Coverage is local offline native gameplay and explicit lifecycle fixtures. Separ
 After the health overlay was added, the live-bot Jump Pad suite passed deployment, upper-floor landing, reuse under bot damage, three missing-render-cache actor fixtures, independent movement-geometry checks, invalid placement, rapid cancellation/reselect, gun/ammo preservation and ceiling/owner reset. The complete neutral-wheel regression also passed its 20 alternating switches, 100 rapid reopen/cancels, ownership isolation, inventory changes and rendering checks.
 
 Facility’s jump/ceiling regression passed eight takeoffs, ceiling stops and landings, low-headroom rejection, and 557 suppressed intro requests with an empty jump queue at gameplay handoff. The final DLL built with -Wall -Wextra -Werror.
+
+## Larger pad and GoldenEye-style presentation
+
+The supplied jump-pad reference has 509 frames at approximately 60 fps over 8.47 seconds. It shows selection, carry, floor preview, placement and gun return; it ends before a complete launch arc. The extension retains the previously tested 26-unit impulse rather than inferring an unsupported airtime measurement.
+
+The pad’s radius increased from 48 to 78 units (96 to 156 in diameter). Native acceptance passed full-footprint clear-floor placement and rejection of an upper-rim position whose center was supported but whose larger edge overhung Temple’s opening. Contact follows the visible octagon, including rejection outside its corners. The real launch occurred 77.30 units from the center, beyond the old 56-unit trigger extent. Removing the old placement arming delay makes a newly placed deck responsive at first contact.
+
+The enlarged pad passed isolated and live-bot equipment/RT placement, native upper-floor landing (peak 748.04, landing 468.79), reuse, airborne/missing-floor rejection, cancellation/reselect, ammunition preservation, real-ceiling stopping and owner reset. The live suite includes three missing-render-cache actor fixtures and an independent movement-geometry check. The full 64-route Temple deferred audit passed 10,240 recorded movement steps, eight pad launch directions, zero escaped-floor failures and zero detected solid-geometry crossings.
+
+Carry/stow and short deck-compression feedback use simulation-published values. The gun drawing waits until the carried device lowers. The world material has perspective-correct UV interpolation, and the generated texture upload preserves pixel-unpack state. Original low-poly geometry, small generated rubber/paint texels, muted metal colors and original 5x7 lettering replace the modern case/panel treatment. The wheel icon matches the octagonal deck.
+
+The native health suite passed again with the restyled green/amber/red health cells, blue armor and pixel labels: actual gunfire, hit refresh, 3.25-second hold, 0.20-second fade, misses, armor, invulnerability/foreign damage, multiple targets and lifecycle/sight checks. Nine wheel previews and six health-state previews passed OpenGL checks; full/damaged/amber/critical/armor/fade states and native carry/preview/placed/hit/fade readbacks were visually reviewed. Strict -Wall -Wextra -Werror compilation passed for the DLL and preview executable.
+
+All reference videos, renderer readbacks, traces and generated diagnostic sheets stay local and excluded. This does not add shared cross-PC pad objects, a new networking protocol, or exhaustive all-map collision coverage.
+
+Final control regressions passed 20 alternating equips, 100 rapid wheel reopen/cancel cycles, neutral-center and ownership checks, inventory pickup/removal and OpenGL rendering. Facility passed eight native jumps/ceiling contacts/landings, low-headroom rejection and 558 intro requests suppressed without physics changes or a queued jump at handoff. Standalone A/sprint/slap/RT edge tests also passed.

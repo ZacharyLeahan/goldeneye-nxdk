@@ -109,6 +109,7 @@ static short axisHook(void*p,int a){
  return getAxis(p,a);
 }
 #include "wheel-render.h"
+#include "retro-ui.h"
 #include "jump-pad-render.h"
 #include "health-bars-render.h"
 static void wheelUpdate(int lb,int back,float x,float y){

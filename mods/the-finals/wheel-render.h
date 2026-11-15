@@ -34,7 +34,7 @@ static void rect(float x,float y,float w,float h){float p[]={x,y,x+w,y,x+w,y+h,x
 static void shape(const float*p,int n){polygon(p,n);}
 static void silhouette(int id,float x,float y,float size){
  glPushMatrix();glTranslatef(x-size*.5f,y-size*.22f,0);glScalef(size/100,size/100,1);glLineWidth(fmaxf(1.f,uiScale));
- if(id==26){float p[]={15,3,85,3,99,17,99,37,85,51,15,51,1,37,1,17};shape(p,8);glColor4f(1,.83f,.3f,1);rect(17,12,66,31);glColor4f(.08f,.1f,.13f,1);float a[]={34,30,50,17,66,30,59,36,50,28,41,36};shape(a,6);}
+ if(id==26){float p[]={25,3,75,3,97,17,97,39,75,53,25,53,3,39,3,17};shape(p,8);glColor4f(.10f,.12f,.08f,1);float r[]={29,10,71,10,86,20,86,36,71,46,29,46,14,36,14,20};shape(r,8);glColor4f(1,1,1,1);float arrow[]={50,14,66,30,34,30};shape(arrow,3);rect(43,28,14,12);}
  else if(id==4||id==5||id==6||id==18||id==19||id==20||id==21){
   int revolver=id==18;float muzzle=id==5?91:78;
   rect(24,12,54,10);rect(24,9,3,4);rect(70,9,3,4);
