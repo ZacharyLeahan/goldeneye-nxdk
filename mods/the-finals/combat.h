@@ -4,6 +4,8 @@
 #define HB(hand,off) (*(signed char*)((unsigned char*)CURRENT+3208+(hand)*1976+(off)))
 static volatile LONG sprintClicks,slapRequests;
 static int combatButtonHeld[2],sprintLatched,sprintOn;
+#define MOVE_RUN_SCALE 1.052f
+#define MOVE_SPRINT_RATIO 1.46f /* native gait is nonlinear; calibrated in-engine */
 static float sprintBlend;
 static void*combatPlayer;
 static struct {
@@ -71,12 +73,14 @@ static void combatBefore(unsigned short *buttons,unsigned short *oldbuttons){
 }
 static void combatAfter(unsigned short rawButtons){
  if(slap.phase==2&&HB(0,12)){slap.events++;if(logfile){fprintf(logfile,"native slap strike event=%d item=%d\n",slap.events,HI(0,0));fflush(logfile);}}
+ /* Normalize diagonal input before speed shaping; never stack multipliers. */
+ if(jumpAllowed()&&!PI(332)){float forward=PF(424)/1.08f,side=PF(416),length=hypotf(forward,side);if(length>1&&hypotf(PF(432),PF(440))<.001f){PF(424)/=length;PF(416)/=length;}PF(424)*=MOVE_RUN_SCALE;PF(416)*=MOVE_RUN_SCALE;}
  int can=sprintLatched&&jumpAllowed()&&!openWheel&&!slap.phase&&
    PI(184)==2&&PI(14004)==2&&PF(424)>.15f&&!PI(332)&&!(rawButtons&(0x2000|0x10|0x20));
  if(!can){sprintLatched=0;sprintBlend=0;}
  else{float dt=*(float*)(base+0x303000+211436);sprintBlend=fminf(1,sprintBlend+fmaxf(0,dt)/9.f);}
  int on=can&&sprintBlend>0;
- if(on){float factor=1+.35f*sprintBlend;PF(424)*=factor;PF(416)*=factor;}
+ if(on){float factor=1+(MOVE_SPRINT_RATIO-1)*sprintBlend;PF(424)*=factor;PF(416)*=factor;}
  if(on!=sprintOn){sprintOn=on;if(logfile){fprintf(logfile,"sprint %s\n",on?"on":"off");fflush(logfile);}}
 }
 static int combatDeferWeapon(int wanted){if(!slap.phase)return 0;slap.deferredWeapon=wanted;return 1;}

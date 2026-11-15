@@ -11,7 +11,7 @@ static TempleCase templeCases[96];static int templeCaseCount,templeCaseIndex,tem
 static JumpVec templePrevious;static int templePreviousValid;static FILE*templeTrace;
 static void templeCheck(int okay,const char*why){if(!okay){if(logfile){fprintf(logfile,"FAIL Temple movement: %s case=%d tick=%d xz=%.2f %.2f foot=%.2f floor=%.2f drop=%d falling=%d\n",why,templeCaseIndex,templeCaseTick,PF(1864),PF(1872),PF(140),PF(144),drop.active,drop.falling);fflush(logfile);}ExitProcess(2);}}
 static void templeStartCase(void){
- TempleCase*c=&templeCases[templeCaseIndex];padTestPlacePlayer(c->x,c->z,470,c->yaw);PF(396)=0;PF(416)=PF(420)=PF(424)=PF(14092)=0;PF(428)=1;PF(384)=0;PF(432)=PF(436)=PF(440)=0;sprintLatched=sprintOn=0;sprintBlend=0;gadget.placed=gadget.flight=0;drop.active=drop.falling=0;
+ TempleCase*c=&templeCases[templeCaseIndex];padTestPlacePlayer(c->x,c->z,470,c->yaw);PF(396)=0;PF(416)=PF(420)=PF(424)=PF(14092)=0;PF(428)=1;PF(384)=0;PF(432)=PF(436)=PF(440)=0;sprintLatched=sprintOn=0;sprintBlend=0;slideStop();slide.cooldown=0;gadget.placed=gadget.flight=0;drop.active=drop.falling=0;
  if(c->mode==5){gadget.position=(JumpVec){PF(1864),PF(140),PF(1872)};gadget.placed=1;gadget.cooldown=20;}
  templeLaunchBase=gadget.launches;templeSampleCount=0;templePreviousValid=0;templeCaseTick=0;if(logfile){fprintf(logfile,"Temple case %d start %.1f %.1f yaw %.0f forward=%d mode=%d\n",templeCaseIndex,c->x,c->z,c->yaw,c->forward,c->mode);fflush(logfile);}
 }
@@ -19,6 +19,9 @@ static void templeBuildCases(void){
  for(int edge=0;edge<4;edge++)for(int n=12;n<=32;n+=4){TempleCase c={-150,-700,0,n,0};if(edge==1)c=(TempleCase){390,-310,90,n,0};if(edge==2)c=(TempleCase){-700,-310,270,n,0};if(edge==3)c=(TempleCase){-150,80,180,n,0};templeCases[templeCaseCount++]=c;}
  for(int edge=0;edge<4;edge++)for(int corner=0;corner<2;corner++)for(int mode=1;mode<=4;mode++){
   TempleCase c={corner?240:-550,-700,0,24,mode};if(edge==1)c=(TempleCase){390,corner?-70:-550,90,24,mode};if(edge==2)c=(TempleCase){-700,corner?-70:-550,270,24,mode};if(edge==3)c=(TempleCase){corner?240:-550,80,180,24,mode};templeCases[templeCaseCount++]=c;
+ }
+ for(int edge=0;edge<4;edge++)for(int corner=0;corner<3;corner++){
+  float side=corner==0?-550:corner==1?-150:240;TempleCase c={side,-700,0,46,6};if(edge==1)c=(TempleCase){390,corner==0?-550:corner==1?-310:-70,90,46,6};if(edge==2)c=(TempleCase){-700,corner==0?-550:corner==1?-310:-70,270,46,6};if(edge==3)c=(TempleCase){side,80,180,46,6};templeCases[templeCaseCount++]=c;
  }
  for(int angle=0;angle<360;angle+=45)templeCases[templeCaseCount++]=(TempleCase){-150,-310,(float)angle,0,5};
  templeTrace=fopen("temple-movement.csv","w");templeCheck(templeTrace!=NULL,"trace file");fprintf(templeTrace,"case,tick,x,z,foot,ground,tilefloor,tileRoom,highestFloor,highestRoom,drop,falling\n");templeReady=1;if(getenv("GE32_TEMPLE_START_CASE"))templeCaseIndex=atoi(getenv("GE32_TEMPLE_START_CASE"));templeCheck(templeCaseIndex>=0&&templeCaseIndex<templeCaseCount,"valid start case");templeStartCase();
@@ -31,7 +34,8 @@ static void templeStressBefore(signed char*x,signed char*y,unsigned short*button
  if(c->mode==5){if(gadget.flight&&PF(140)>550)*buttons=8;if(!gadget.flight&&gadget.launches>templeLaunchBase)gadget.placed=0;return;}
  if(templeCaseTick>12&&templeCaseTick<=12+c->forward)*buttons=8;else if(templeCaseTick>12+c->forward&&templeCaseTick<=72+c->forward)*buttons=4;
  if(c->mode==1&&*buttons)*buttons|=(templeCaseTick<36?1:2);
- if(c->mode==2&&templeCaseTick==18)InterlockedIncrement(&sprintClicks);
+ if((c->mode==2||c->mode==6)&&templeCaseTick==18)InterlockedIncrement(&sprintClicks);
+ if(c->mode==6&&templeCaseTick==26){PI(184)=0;InterlockedExchange(&slideRequests,1);}
  if(c->mode==3&&templeCaseTick==18)InterlockedExchange(&pendingJump,1);
  if(c->mode==4)PI(184)=0;
 }
