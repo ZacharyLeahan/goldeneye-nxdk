@@ -45,6 +45,8 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "jump-pad.h"
 #include "jump-pad-test.h"
 #include "temple-movement-test.h"
+#include "health-bars.h"
+#include "health-bars-test.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
  int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
@@ -53,8 +55,10 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  if(isLocal){padTestBefore(&x,&y,&buttons);templeStressBefore(&x,&y,&buttons);}
  if(isLocal){combatTestBefore(&buttons);dropTestBefore(&buttons);}
  unsigned short rawButtons=buttons;
+ if(isLocal){healthBegin();if(getenv("GE32_HEALTH_TEST"))x=y=0;healthTestBefore(&buttons);}
  if(isLocal){padBefore(&buttons,&oldbuttons);combatBefore(&buttons,&oldbuttons);}
  originalTick(x,y,buttons,oldbuttons);
+ if(isLocal&&getenv("GE32_HEALTH_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(healthTestFire);
  if(isLocal){combatAfter(rawButtons);combatTestAfter(rawButtons);dropTestAfter();padTestAfter();templeStressAfter();}
  int n=localIndex();if(NUMBER!=n||!CURRENT||CURRENT!=PLAYERS[n])return;
  static int testTicks=0;
@@ -75,7 +79,7 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  }
  InventorySnapshot next={0};next.current=padCarrying?PAD_ITEM:FN(int(*)(int),0x1000+421920)(0);next.local=n;next.valid=1;next.allowJump=jumpAllowed();next.tickThread=GetCurrentThreadId();
  for(int id=4;id<=25;id++){if(id!=23&&FN(int(*)(int),0x1000+43904)(id))next.ids[next.count++]=id;}
- next.ids[next.count++]=PAD_ITEM;publishInventory(n,&next);padPublish();padTestPublishActions();
+ next.ids[next.count++]=PAD_ITEM;publishInventory(n,&next);padPublish();padTestPublishActions();healthPublish();healthTestAfter();
 }
 static int installGameHook(void){
  unsigned char expected[]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x57,0x56,0x53};
@@ -106,6 +110,7 @@ static short axisHook(void*p,int a){
 }
 #include "wheel-render.h"
 #include "jump-pad-render.h"
+#include "health-bars-render.h"
 static void wheelUpdate(int lb,int back,float x,float y){
  if(!playing()){openWheel=0;previousLB=lb;cancelled=0;return;}
  if(lb&&!previousLB){
@@ -143,6 +148,9 @@ static void padTestCapture(void*w,const char*name){
  glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);glPixelStorei(GL_PACK_ALIGNMENT,4);glPixelStorei(GL_PACK_ROW_LENGTH,0);glPixelStorei(GL_PACK_SKIP_ROWS,0);glPixelStorei(GL_PACK_SKIP_PIXELS,0);glReadPixels(0,0,width,height,0x80e0,GL_UNSIGNED_BYTE,p);glPopClientAttrib();
  BITMAPFILEHEADER file={0};BITMAPINFOHEADER info={0};file.bfType=0x4d42;file.bfOffBits=sizeof(file)+sizeof(info);file.bfSize=file.bfOffBits+stride*height;info.biSize=sizeof(info);info.biWidth=width;info.biHeight=height;info.biPlanes=1;info.biBitCount=24;
  FILE*f=fopen(name,"wb");if(f){fwrite(&file,sizeof(file),1,f);fwrite(&info,sizeof(info),1,f);fwrite(p,stride,height,f);fclose(f);}free(p);
+}
+static void healthTestRender(void*w){
+ if(!getenv("GE32_HEALTH_TEST")||!useProgram||!activeTexture)return;testAssert(glGetError()==GL_NO_ERROR,"health bars render without GL errors");int capture=InterlockedExchange(&healthTestCapture,0);if(capture&&getenv("GE32_HEALTH_VISUAL_TEST"))padTestCapture(w,capture==1?"health-hit.bmp":"health-fade.bmp");
 }
 static void padTestRenderTick(void*w){
  if(!getenv("GE32_PAD_TEST"))return;
@@ -203,7 +211,8 @@ static void swapHook(void*w){
  int lb=pad?getButton(pad,9):0,back=pad?getButton(pad,1):0;
  float x=pad?getAxis(pad,2)/32767.f:0,y=pad?getAxis(pad,3)/32767.f:0;
  wheelUpdate(lb,back,x,y);
- if(useProgram&&activeTexture){drawPad(w);if(openWheel)draw(w);}
+ if(useProgram&&activeTexture){drawPad(w);drawHealth(w);if(openWheel)draw(w);}
+ healthTestRender(w);
  if(getenv("GE32_TEMPLE_VISUAL_TEST")&&InterlockedExchange(&templeFrameCapture,0))padTestCapture(w,"temple-camera-transition.bmp");
  swapWindow(w);
 }
@@ -233,10 +242,11 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
   int j=installJumpHook();
   int d=installDropHook();
   int p=installPadGunHook();
+  int h=installHealthHook();
   int a=replaceImport("SDL_GameControllerGetButton",buttonHook,(void**)&getButton);
   int b=replaceImport("SDL_GameControllerGetAxis",axisHook,(void**)&getAxis);
   int c=replaceImport("SDL_GL_SwapWindow",swapHook,(void**)&swapWindow);
-  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d button=%d axis=%d swap=%d\n",g,j,d,p,a,b,c);fflush(logfile);}
+  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d\n",g,j,d,p,h,a,b,c);fflush(logfile);}
  }
  return TRUE;
 }
