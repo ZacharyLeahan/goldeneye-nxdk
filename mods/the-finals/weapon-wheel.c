@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#define GRENADE_ITEM 26
 static uintptr_t base;
 static void *pad;
 static volatile LONG openWheel;
@@ -24,7 +25,7 @@ static FILE *logfile;
 #define CURRENT (*(void**)(base+0x303000+392272))
 #define NUMBER (*(int*)(base+0x362c44))
 #define PLAYERS ((void**)(base+0x303000+399456))
-typedef struct {int ids[32],count,current,local,valid,allowJump;DWORD tickThread;} InventorySnapshot;
+typedef struct {int ids[32],count,current,local,valid,allowJump,grenades;DWORD tickThread;} InventorySnapshot;
 static InventorySnapshot published;
 static SRWLOCK snapshotLock=SRWLOCK_INIT;
 static volatile LONG pendingWeapon=-1,gameTestsReady,testAction;
@@ -33,7 +34,7 @@ static void (*originalTick)(signed char,signed char,unsigned short,unsigned shor
 static int localIndex(void){int n=FN(int(*)(void),0x1000+936896)();return n>=0&&n<32?n:0;}
 static InventorySnapshot snapshotRead(void){InventorySnapshot r;AcquireSRWLockShared(&snapshotLock);r=published;ReleaseSRWLockShared(&snapshotLock);return r;}
 static int playing(void){int m=*(int*)(base+0x228000+59840);InventorySnapshot s=snapshotRead();return (m==11||m==-1)&&s.valid;}
-static int available(int id){InventorySnapshot s=snapshotRead();for(int j=0;j<s.count;j++)if(s.ids[j]==id)return 1;return 0;}
+static int available(int id){InventorySnapshot s=snapshotRead();if(id==GRENADE_ITEM&&s.grenades<=0)return 0;for(int j=0;j<s.count;j++)if(s.ids[j]==id)return 1;return 0;}
 static int current(void){return snapshotRead().current;}
 static void equip(int id){InterlockedExchange(&pendingWeapon,id);if(logfile){fprintf(logfile,"queue weapon=%d\n",id);fflush(logfile);}}
 static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=localIndex())return;AcquireSRWLockExclusive(&snapshotLock);published=*s;ReleaseSRWLockExclusive(&snapshotLock);}
@@ -43,10 +44,12 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "ledge-drop.h"
 #include "ledge-drop-test.h"
 #include "jump-pad.h"
+#include "grenades.h"
 #include "jump-pad-test.h"
 #include "temple-movement-test.h"
 #include "health-bars.h"
 #include "health-bars-test.h"
+#include "grenades-test.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
  int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
@@ -56,8 +59,10 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  if(isLocal){combatTestBefore(&buttons);dropTestBefore(&buttons);}
  unsigned short rawButtons=buttons;
  if(isLocal){healthBegin();if(getenv("GE32_HEALTH_TEST"))x=y=0;healthTestBefore(&buttons);}
+ if(isLocal){grenadeLoadout();grenadeTestBefore(&x,&y,&buttons);}
  if(isLocal){padBefore(&buttons,&oldbuttons);combatBefore(&buttons,&oldbuttons);}
  originalTick(x,y,buttons,oldbuttons);
+ if(isLocal&&getenv("GE32_GRENADE_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(grenadeTestFire);
  if(isLocal&&getenv("GE32_HEALTH_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(healthTestFire);
  if(isLocal){combatAfter(rawButtons);combatTestAfter(rawButtons);dropTestAfter();padTestAfter();templeStressAfter();}
  int n=localIndex();if(NUMBER!=n||!CURRENT||CURRENT!=PLAYERS[n])return;
@@ -71,7 +76,7 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  }
  int wanted=InterlockedExchange(&pendingWeapon,-1);
  if(wanted==PAD_ITEM&&!combatDeferWeapon(wanted))padEquip();
- if(wanted>=4&&wanted<=25&&!combatDeferWeapon(wanted)&&FN(int(*)(int),0x1000+43904)(wanted)){
+ if(wanted>=4&&wanted<=GRENADE_ITEM&&(wanted!=GRENADE_ITEM||grenadeAmmo()>0)&&!combatDeferWeapon(wanted)&&FN(int(*)(int),0x1000+43904)(wanted)){
   padStow();
   if(logfile){fprintf(logfile,"game accepted weapon=%d\n",wanted);fflush(logfile);}
   FN(void(*)(int,int,int),0x1000+420240)(0,wanted,1);
@@ -79,6 +84,7 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  }
  InventorySnapshot next={0};next.current=padCarrying?PAD_ITEM:FN(int(*)(int),0x1000+421920)(0);next.local=n;next.valid=1;next.allowJump=jumpAllowed();next.tickThread=GetCurrentThreadId();
  for(int id=4;id<=25;id++){if(id!=23&&FN(int(*)(int),0x1000+43904)(id))next.ids[next.count++]=id;}
+ next.grenades=grenadeAmmo();next.ids[next.count++]=GRENADE_ITEM;
  next.ids[next.count++]=PAD_ITEM;publishInventory(n,&next);padPublish();padTestPublishActions();healthPublish();healthTestAfter();
 }
 static int installGameHook(void){
@@ -90,7 +96,9 @@ static int installGameHook(void){
  unsigned char jump[]={0x48,0xb8,0,0,0,0,0,0,0,0,0xff,0xe0};*(uintptr_t*)(jump+2)=(uintptr_t)gameTickHook;
  VirtualProtect(target,12,PAGE_EXECUTE_READWRITE,&prot);memcpy(target,jump,12);VirtualProtect(target,12,prot,&prot);FlushInstructionCache(GetCurrentProcess(),target,12);return 1;
 }
-static const char *names[]={"Unarmed","Fist","Knife","Throwing knife","PP7","PP7 silenced","DD44 Dostovei","Klobb","KF7 Soviet","ZMG","D5K Deutsche","D5K silenced","Phantom","AR33","RC-P90","Shotgun","Automatic shotgun","Sniper rifle","Cougar Magnum","Golden Gun","Silver PP7","Gold PP7","Moonraker Laser","Watch Laser","Grenade Launcher","Rocket Launcher","Jump Pad"};
+static const char *names[]={"Unarmed","Fist","Knife","Throwing knife","PP7","PP7 silenced","DD44 Dostovei","Klobb","KF7 Soviet","ZMG","D5K Deutsche","D5K silenced","Phantom","AR33","RC-P90","Shotgun","Automatic shotgun","Sniper rifle","Cougar Magnum","Golden Gun","Silver PP7","Gold PP7","Moonraker Laser","Watch Laser","Grenade Launcher","Rocket Launcher","Grenades"};
+static const char*itemName(int id){return id==PAD_ITEM?"Jump Pad":id>=0&&id<=GRENADE_ITEM?names[id]:"Equipment";}
+#include "wheel-layout.h"
 static void inventory(void){InventorySnapshot s=snapshotRead();count=s.count;memcpy(ids,s.ids,sizeof(ids));}
 static unsigned char buttonHook(void *p,int b){
  if(!pad)pad=p;
@@ -126,13 +134,10 @@ static void wheelUpdate(int lb,int back,float x,float y){
   else if(x*x+y*y<.22f*.22f&&wheelStickEngaged)choice=-1;
   else if(x*x+y*y>.28f*.28f&&count){
    wheelStickEngaged=1;
-   float angle=atan2f(y,x)+1.57079632679f+3.14159265359f/count;
-   while(angle<0)angle+=6.28318530718f;
-   int target=((int)(angle*count/6.28318530718f))%count;
-   /* A small angular latch avoids flickering between neighboring wedges. */
-   if(target!=choice){float center=-1.57079632679f+target*6.28318530718f/count;
-    float delta=atan2f(sinf(atan2f(y,x)-center),cosf(atan2f(y,x)-center));
-    if(choice<0||fabsf(delta)<3.14159265359f/count-.06f)choice=target;
+   float angle=atan2f(y,x);int target=wheelTarget(angle);
+   if(target<0)choice=-1;
+   else if(target!=choice){float start,end;wheelBounds(target,&start,&end);float wrapped=angle;while(wrapped<start)wrapped+=6.28318530718f;while(wrapped>start+6.28318530718f)wrapped-=6.28318530718f;
+    if(choice<0||(wrapped>start+.06f&&wrapped<end-.06f))choice=target;
    }
   }
  }
@@ -157,14 +162,14 @@ static void padTestRenderTick(void*w){
  if(!getenv("GE32_PAD_TEST"))return;
  int action=InterlockedExchange(&padTestRenderAction,0);static int rtFrames;
  if(action==4){InterlockedExchange(&padCancelRequest,1);wheelUpdate(1,0,0,0);}
- if(action==1||action==3||action==5){wheelUpdate(1,0,0,0);int index=-1;for(int i=0;i<count;i++)if(ids[i]==(action==3?5:PAD_ITEM))index=i;testAssert(index>=0,"jump pad available in equipment wheel");float a=-1.57079632679f+index*6.28318530718f/count;wheelUpdate(1,0,cosf(a),sinf(a));if(getenv("GE32_PAD_VISUAL_TEST")&&useProgram&&activeTexture){draw(w);padTestCapture(w,"pad-wheel.bmp");}wheelUpdate(0,0,cosf(a),sinf(a));}
+ if(action==1||action==3||action==5){wheelUpdate(1,0,0,0);int index=-1;for(int i=0;i<count;i++)if(ids[i]==(action==3?5:PAD_ITEM))index=i;testAssert(index>=0,"jump pad available in equipment wheel");float a=wheelAngle(index);wheelUpdate(1,0,cosf(a),sinf(a));if(getenv("GE32_PAD_VISUAL_TEST")&&useProgram&&activeTexture){draw(w);padTestCapture(w,"pad-wheel.bmp");}wheelUpdate(0,0,cosf(a),sinf(a));}
  if(action==2){padTrigger(0,1);padTrigger(1,1);rtFrames=20;}
  if(rtFrames){padTrigger(1,1);if(!--rtFrames)padTrigger(0,1);}
  if(useProgram&&activeTexture){while(glGetError()!=GL_NO_ERROR){}drawPad(w);if(getenv("GE32_PAD_VISUAL_TEST")){static int captured;if(!captured&&padTestPhase==2&&padTestWait>60){padTestCapture(w,"pad-carry.bmp");captured=1;}if(captured==1&&padTestPhase==4&&padSnapshot().visible){padTestCapture(w,"pad-placed.bmp");captured=2;}}testAssert(glGetError()==GL_NO_ERROR,"jump-pad preview/world/HUD render without GL errors");}
 }
 static void testWheelCenter(void){
  InventorySnapshot s=snapshotRead();int index=0;for(int i=0;i<s.count;i++)if(s.ids[i]!=s.current){index=i;break;}
- float angle=-1.57079632679f+index*6.28318530718f/s.count,x=cosf(angle),y=sinf(angle);
+ float angle=wheelAngle(index),x=cosf(angle),y=sinf(angle);
  wheelUpdate(1,0,0,0);testAssert(choice>=0&&ids[choice]==s.current,"opening highlights equipped item");wheelUpdate(1,0,0,0);wheelUpdate(0,0,0,0);testAssert(pendingWeapon==-1,"opening/releasing current item does not re-equip");
  wheelUpdate(1,0,0,0);wheelUpdate(1,0,.18f,0);testAssert(choice==-1,"gentle nudge reaches neutral without another item");wheelUpdate(0,0,0,0);testAssert(pendingWeapon==-1,"gentle-neutral release keeps current item");
  wheelUpdate(1,0,0,0);wheelUpdate(1,0,x,y);testAssert(choice==index,"outer sector selects item");wheelUpdate(1,0,.08f,-.08f);testAssert(choice==-1,"center clears sector selection");wheelUpdate(0,0,0,0);testAssert(pendingWeapon==-1&&current()==s.current,"center release preserves equipment");
@@ -178,11 +183,11 @@ static int testTick(void*w){
  InventorySnapshot s=snapshotRead();
  testAssert(s.tickThread!=GetCurrentThreadId(),"gameplay and drawing threads are separate");
  if(frame==0&&s.current!=5&&s.current!=8)return 1;
- if(++frame==1){initialWeapon=s.current;testAssert(s.count==3,"initial snapshot contains two guns and jump pad");if(logfile)fprintf(logfile,"TEST: game thread=%lu render thread=%lu local=%d owned=2\n",s.tickThread,GetCurrentThreadId(),s.local);}
+ if(++frame==1){initialWeapon=s.current;testAssert(s.count==4,"initial snapshot contains two guns, grenades and jump pad");if(logfile)fprintf(logfile,"TEST: game thread=%lu render thread=%lu local=%d owned=2\n",s.tickThread,GetCurrentThreadId(),s.local);}
  int cycle=(frame-1)/120,phase=(frame-1)%120;
  if(cycle<20){
-  int desired=cycle%2?initialWeapon:(initialWeapon==5?8:5),index=0;for(int i=0;i<s.count;i++)if(s.ids[i]==desired)index=i;float angle=-1.57079632679f+index*6.28318530718f/s.count;float tx=cosf(angle),ty=sinf(angle);
-  if(phase==0){wheelUpdate(1,0,0,0);testAssert(count==3,"reopened equipment wheel retains two guns and pad");}
+  int desired=cycle%2?initialWeapon:(initialWeapon==5?8:5),index=0;for(int i=0;i<s.count;i++)if(s.ids[i]==desired)index=i;float angle=wheelAngle(index);float tx=cosf(angle),ty=sinf(angle);
+  if(phase==0){wheelUpdate(1,0,0,0);testAssert(count==4,"reopened equipment wheel retains two guns, grenades and pad");}
   else if(phase<5)wheelUpdate(1,0,tx,ty);
   else wheelUpdate(0,0,tx,ty);
   if(phase==119){testAssert(current()==desired,"game thread equipped alternating requested weapon");completed++;}
@@ -191,13 +196,13 @@ static int testTick(void*w){
   int end=(frame-1)-2400;
   if(end==0){
    testWheelCenter();
-   for(int i=0;i<100;i++){wheelUpdate(1,0,0,0);testAssert(count==3,"100 rapid opens retain equipment ownership");wheelUpdate(1,1,0,0);wheelUpdate(0,0,0,0);}
-   InventorySnapshot remote={0};publishInventory(31,&remote);testAssert(snapshotRead().count==3,"foreign player cannot overwrite local inventory snapshot");
+   for(int i=0;i<100;i++){wheelUpdate(1,0,0,0);testAssert(count==4,"100 rapid opens retain equipment ownership");wheelUpdate(1,1,0,0);wheelUpdate(0,0,0,0);}
+   InventorySnapshot remote={0};publishInventory(31,&remote);testAssert(snapshotRead().count==4,"foreign player cannot overwrite local inventory snapshot");
    int before=current();wheelUpdate(1,0,0,1);wheelUpdate(1,1,0,1);wheelUpdate(0,0,0,0);testAssert(pendingWeapon==-1&&current()==before,"B cancels without enqueueing a switch");InterlockedExchange(&testAction,1);
   }
-  if(end==30){wheelUpdate(1,0,0,0);testAssert(count==4,"pickup added on game thread appears");wheelUpdate(1,1,0,0);wheelUpdate(0,0,0,0);InterlockedExchange(&testAction,2);}
-  if(end==60){wheelUpdate(1,0,0,0);testAssert(count==3,"removed gun does not persist as ghost entry");wheelUpdate(1,1,0,0);wheelUpdate(0,0,0,0);InterlockedExchange(&testAction,3);}
-  if(end==90){wheelUpdate(1,0,0,0);testAssert(count==1&&ids[0]==PAD_ITEM,"pad remains selectable after all guns removed");testAssert(choice==-1,"opening with no represented equipped item stays neutral");if(useProgram&&activeTexture){while(glGetError()!=GL_NO_ERROR){}draw(w);testAssert(glGetError()==GL_NO_ERROR,"empty state renders without GL errors");}
+  if(end==30){wheelUpdate(1,0,0,0);testAssert(count==5,"pickup added on game thread appears");wheelUpdate(1,1,0,0);wheelUpdate(0,0,0,0);InterlockedExchange(&testAction,2);}
+  if(end==60){wheelUpdate(1,0,0,0);testAssert(count==4,"removed gun does not persist as ghost entry");wheelUpdate(1,1,0,0);wheelUpdate(0,0,0,0);InterlockedExchange(&testAction,3);}
+  if(end==90){wheelUpdate(1,0,0,0);testAssert(count==2&&ids[1]==PAD_ITEM,"pad remains selectable after all guns removed");testAssert(choice==-1,"opening with no represented equipped item stays neutral");if(useProgram&&activeTexture){while(glGetError()!=GL_NO_ERROR){}draw(w);testAssert(glGetError()==GL_NO_ERROR,"empty state renders without GL errors");}
    if(logfile){fprintf(logfile,"PASS: %d alternating switches, 100 rapid reopen/cancels, foreign-player isolation, pickup/removal, pad retained with no guns, GL rendering, separate game/render threads\n",completed);fflush(logfile);}ExitProcess(0);
   }
  }
@@ -207,6 +212,7 @@ static void swapHook(void*w){
  renderThread=GetCurrentThreadId();
  if(!useProgram){useProgram=(void*)wglGetProcAddress("glUseProgram");activeTexture=(void*)wglGetProcAddress("glActiveTexture");}
  dropTestLaunch();
+ if(getenv("GE32_GRENADE_TEST")){int selected=InterlockedExchange(&grenadeTestSelect,0);if(selected){wheelUpdate(1,0,0,0);int index=-1;for(int i=0;i<count;i++)if(ids[i]==selected)index=i;testAssert(index>=0,"equipment present in wheel");float angle=wheelAngle(index),x=cosf(angle),y=sinf(angle);wheelUpdate(1,0,x,y);testAssert(choice>=0&&ids[choice]==selected,"fixed directional slot selects requested gadget");wheelUpdate(0,0,x,y);}}
  padTestRenderTick(w);if(!getenv("GE32_PAD_TEST"))padPoll();
  if(testTick(w)){swapWindow(w);return;}
  int lb=pad?getButton(pad,9):0,back=pad?getButton(pad,1):0;

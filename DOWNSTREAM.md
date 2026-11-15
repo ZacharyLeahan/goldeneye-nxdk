@@ -6,7 +6,7 @@ The playable multiplayer build used here is GE32 2026.11.07 e8859fe9 for Windows
 
 ## Current additions
 
-- Hold LB for an owned-weapon radial wheel; select with the right stick and release to equip. B cancels.
+- Hold LB for an equipment wheel: Jump Pad fixed at the bottom, native grenades fixed on the right, and owned guns above/left. Each local life starts with three grenades; RT throws. Select with the right stick and release to equip; center keeps current equipment and B cancels.
 - Weapon silhouettes, translucent panels, readable labels, an equipped marker, and a selected-slot outline.
 - Thread-safe local-player inventory snapshots and queued game-thread equipment changes.
 - A jumps using native gravity and floor landing, with grounded-only takeoff and ceiling checks. B toggles crouch; A also clears crouch before jumping. Y interacts.

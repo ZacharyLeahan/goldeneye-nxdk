@@ -147,3 +147,13 @@ The native health suite passed again with the restyled green/amber/red health ce
 All reference videos, renderer readbacks, traces and generated diagnostic sheets stay local and excluded. This does not add shared cross-PC pad objects, a new networking protocol, or exhaustive all-map collision coverage.
 
 Final control regressions passed 20 alternating equips, 100 rapid wheel reopen/cancel cycles, neutral-center and ownership checks, inventory pickup/removal and OpenGL rendering. Facility passed eight native jumps/ceiling contacts/landings, low-headroom rejection and 558 intro requests suppressed without physics changes or a queued jump at handoff. Standalone A/sprint/slap/RT edge tests also passed.
+
+## Fixed gadget slots and native grenades
+
+Strict DLL and preview builds pass -Wall -Wextra -Werror. Jump Pad uses synthetic ID 128 so native hand-grenade ID 26 is free. Production input and drawing share the same angular bounds: grenades right, pad bottom, guns upper/left. A hidden-window test verifies cardinal selection and icon/sector agreement with zero through 21 guns. Nine equipment previews and six health previews pass OpenGL checks; the four-slot equipment layout was visually reviewed.
+
+The isolated native Temple grenade acceptance passed: exactly three on the first playable life, wheel-to-pad-to-grenade switching, native equip, three actual trigger-driven throws consuming one each down to zero, no refill after waiting or switching, empty-slot rejection, unchanged gun ammunition, and re-enabling the right slot after a native inventory/ammo pickup fixture. Empty grenades remain visible with a zero counter.
+
+Wheel regression passed 20 alternating equips, 100 rapid open/cancel cycles, neutral-center and same-frame recenter cancellation, foreign-player snapshot isolation, dynamic pickup/removal and rendering. Jump-pad regression passed placement, launch to the upper Temple floor, reuse, invalid placement, B cancel/reselect, gun/ammo restoration, ceiling stopping and owner reset with the new item ID and slot layout. No collision/health timing changes were made.
+
+These checks use a separate offline installation. Real cross-PC grenade replication, host/client authority and every multiplayer loadout remain unverified; no network protocol changes are included. ROMs, binaries, previews and logs remain ignored.
