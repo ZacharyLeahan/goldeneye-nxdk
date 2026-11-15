@@ -33,6 +33,7 @@ static int dropActorsClear(JumpVec a,JumpVec b,int*occupied){
 static int dropSegmentClear(JumpVec from,JumpVec to){
  float dx=to.x-from.x,dy=to.y-from.y,dz=to.z-from.z,len2=dx*dx+dy*dy+dz*dz;
  if(len2<.0001f)return 1;
+ if(!collisionPrepareBox((JumpVec){fminf(from.x,to.x),fminf(from.y,to.y),fminf(from.z,to.z)},(JumpVec){fmaxf(from.x,to.x),fmaxf(from.y,to.y),fmaxf(from.z,to.z)}))return 0;
  int total=*(int*)(base+0x228000+4208);float scale=*(float*)(base+0x228000+4252);
  if(total<1||total>2048||!isfinite(scale)||scale<=0)return 0;
  unsigned char*rooms=(void*)(base+0x303000+27264);
@@ -50,18 +51,35 @@ static int dropSegmentClear(JumpVec from,JumpVec to){
  if(!dropActorsClear(from,to,occupied))return 0;
  return !FN(int(*)(void*,JumpVec*,JumpVec*,unsigned,JumpVec*,JumpVec*,int*),0x1000+721344)(PP(200),&from,&to,0x13,&pos,&normal,occupied);
 }
+/* A circumscribed 16-point footprint covers front/back as well as sides.
+ * Vertical destination probes catch a thin floor/ceiling lip between height samples. */
 static int dropBodyClear(JumpVec*to){
- float dx=to->x-PF(1864),dz=to->z-PF(1872),len=hypotf(dx,dz);if(len<.001f)return 1;
- float sx=-dz/len*29.f,sz=dx/len*29.f;
- float head=fmaxf(40.f,PF(13940)+PF(188)+10.f);
- for(int side=-1;side<=1;side++)for(int level=0;level<=6;level++){
-  float y=PF(140)+6.f+(head-6.f)*level/6.f;
-  JumpVec a={PF(1864)+side*sx,y,PF(1872)+side*sz},b={to->x+side*sx,y,to->z+side*sz};
-  if(!dropSegmentClear(a,b))return 0;
+ float len=hypotf(to->x-PF(1864),to->z-PF(1872));if(len<.001f)return 1;
+ float foot=PF(140),head=fmaxf(40.f,PF(13940)+PF(188)+10.f);
+ if(!collisionPrepareBox((JumpVec){fminf(PF(1864),to->x)-31,foot+.1f,fminf(PF(1872),to->z)-31},(JumpVec){fmaxf(PF(1864),to->x)+31,foot+head,fmaxf(PF(1872),to->z)+31}))return 0;
+ for(int point=0;point<17;point++){
+  float ox=0,oz=0;if(point){float a=(point-1)*.3926990817f;ox=31*cosf(a);oz=31*sinf(a);}
+  for(int level=0;level<4;level++){
+   float y=foot+.25f+(head-.25f)*level/3.f;JumpVec a={PF(1864)+ox,y,PF(1872)+oz},b={to->x+ox,y,to->z+oz};if(!dropSegmentClear(a,b))return 0;
+  }
+  JumpVec lo={to->x+ox,foot+.25f,to->z+oz},hi={lo.x,foot+head,lo.z};if(!dropSegmentClear(lo,hi))return 0;
  }
  return 1;
 }
+static float traversalFloorSupport(int*uniform){
+ float support=-INFINITY,lowest=INFINITY;int present=0;
+ for(int i=0;i<17;i++){float ox=0,oz=0;if(i){float angle=(i-1)*.3926990817f;ox=31*cosf(angle);oz=31*sinf(angle);}float y;void*t=floorBelow(PF(1864)+ox,PF(140)+1,PF(1872)+oz,&y);if(t&&isfinite(y)){support=fmaxf(support,y);lowest=fminf(lowest,y);present++;}}
+ *uniform=present==17&&support-lowest<3;return support;
+}
 static int dropTryStan(JumpVec*to,void**tile){
+ /* Backing out of an opening can leave a lower STAN tile under feet that
+  * are still supported upstairs. Restore the actual supporting layer before
+  * asking native collision, so it checks the upstairs walls and portals. */
+ if(NUMBER==localIndex()&&CURRENT==drop.player&&drop.active&&jumpAllowed()&&PP(1856)){
+  float support;void*t=floorBelow(PF(1864),PF(140)+1,PF(1872),&support);
+  float old=FN(float(*)(void*,float,float),0x1000+879136)(PP(1856),PF(1864),PF(1872));
+  if(t&&isfinite(support)&&isfinite(old)&&support>old+16&&fabsf(PF(140)-support)<1.5f&&fabsf(PF(152))<.6f)PP(1856)=t;
+ }
  int native=originalTryStan(to,tile);native=padTryUpper(to,tile,native);
  if(getenv("GE32_DROP_BASELINE")||NUMBER!=localIndex()||!jumpAllowed()||!PP(200))return native;
  if(drop.player!=CURRENT){memset(&drop,0,sizeof(drop));drop.player=CURRENT;}
@@ -72,7 +90,7 @@ static int dropTryStan(JumpVec*to,void**tile){
  float lower;void*landing=floorBelow(to->x+dx/len*68.f,ground+1,to->z+dz/len*68.f,&lower);
  if(!landing||!isfinite(lower)||ground-lower<16||ground-lower>2048)return native;
  int landingRoom=FN(int(*)(void*),0x1000+883888)(landing),roomCount=*(int*)(base+0x228000+4208);
- if(landingRoom<0||landingRoom>=roomCount||roomCount>2048||!*(void**)(base+0x303000+27264+landingRoom*0x68+0x40))return native;
+ if(landingRoom<0||landingRoom>=roomCount||roomCount>2048||!jumpRoomReady(landingRoom))return native;
  static const float ring[9][2]={{0,0},{26,0},{-26,0},{0,26},{0,-26},{18,18},{18,-18},{-18,18},{-18,-18}};
  for(int i=0;i<9;i++){
   float y;void*t=floorBelow(to->x+dx/len*68.f+ring[i][0],lower+8,to->z+dz/len*68.f+ring[i][1],&y);
@@ -87,17 +105,24 @@ static int dropTryStan(JumpVec*to,void**tile){
 /* Retain ledge support while any sampled foot point is still on the deck.
  * Once clear, native gravity and landing clamps perform the descent. */
 static void dropPrepareVertical(int*useHeight,float*offset){
- if(!drop.active||drop.player!=CURRENT)return;
+ if(drop.player!=CURRENT){memset(&drop,0,sizeof(drop));drop.player=CURRENT;}
+ /* Native horizontal navigation can switch layers during an added jump.
+  * Preserve the full-body traversal context until a stable landing, even if
+  * the native jump flag clears while only part of the body is supported. */
+ if(!drop.active&&jumpActive&&jumpAllowed()){drop.active=1;drop.originFloor=jumpOriginFloor;drop.falling=0;}
+ if(!drop.active)return;
  if(!jumpAllowed()){drop.active=0;return;}
- float support=-INFINITY;
- static const float ring[9][2]={{0,0},{26,0},{-26,0},{0,26},{0,-26},{18,18},{18,-18},{-18,18},{-18,-18}};
- for(int i=0;i<9;i++){float y;void*t=floorBelow(PF(1864)+ring[i][0],PF(140)+2,PF(1872)+ring[i][1],&y);if(t&&isfinite(y))support=fmaxf(support,y);}
+ int backOnOrigin;float support=traversalFloorSupport(&backOnOrigin);
+ if(backOnOrigin&&fabsf(PF(140)-support)<1.5f&&fabsf(PF(152))<.6f){float h;void*t=floorBelow(PF(1864),PF(140)+1,PF(1872),&h);if(t&&fabsf(h-support)<3)PP(1856)=t;drop.active=drop.falling=0;return;}
  if(!isfinite(support)){drop.active=0;return;}
  PF(144)=support;*useHeight=1;*offset=0;
  if(support<drop.originFloor-16)drop.falling=1;
 }
 static void dropAfterVertical(void){
- if(drop.active&&drop.falling&&PF(140)<=PF(144)+.2f&&PF(152)<=0){drop.active=drop.falling=0;drop.lands++;}
+ if(drop.active&&PF(140)<=PF(144)+.2f&&PF(152)<=0){
+  int uniform;float support=traversalFloorSupport(&uniform);
+  if(uniform&&fabsf(PF(140)-support)<.5f){float y;void*t=floorBelow(PF(1864),PF(140)+1,PF(1872),&y);if(t&&fabsf(y-support)<3)PP(1856)=t;drop.active=drop.falling=0;drop.lands++;}
+ }
 }
 
 static int installDropHook(void){

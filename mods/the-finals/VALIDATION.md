@@ -101,3 +101,19 @@ Native wheel regression passed opening on the equipped item, leaving it unchange
 Nine production-renderer previews passed GL checks (one/two/three/eight items, gun selection, gadget selection and neutral). Highlighted and neutral layouts were visually reviewed on dark and bright backgrounds; subtle icon/name shadows retain contrast. Slots show icons only; only the highlighted item has a name above the wheel. The central disk and repeated labels/instructions were removed.
 
 After the neutral-center update, the full native jump-pad acceptance suite passed again: LB selection, RT deployment, upper-floor landing, reuse, invalid placements, B cancellation, LB gun selection/ammo totals, ceiling contact and context reset.
+
+## Temple opening movement-clipping correction
+
+The bug was reproduced without a jump pad: approaching the north edge briefly and backing away left feet at 468.79 on the upper floor while the native tile still referenced the -468.79 lower floor (room 4 instead of room 11). A second independent geometry check caught the body entering the floor lip while falling and reversing. Corner-jump cases also exposed a partial landing clearing traversal protection too early.
+
+The fix restores the supporting native floor layer before normal collision, keeps traversal protection through partial landings and added jumps, and ends it only at stable full-footprint support. Front/back and side sweeps use a circumscribed 16-point footprint plus center. Toe-level and vertical destination probes protect thin slabs; intersected room geometry is prepared independently of what the camera has cached.
+
+Final native movement run: 64 completed routes, 10,240 movement steps, zero wrong-floor settled states, zero detected solid-geometry crossings and zero escaped-floor failures. Coverage includes all four sides, six approach/retreat timings per side, eight corner approaches with strafe/sprint/jump/crouch variants, and eight pad launch directions reaching the upper floor. A deferred audit replays recorded movement against background triangles after each route, avoiding ahead-of-movement cache warming. Settled native anchors must contain the player. A representative room-transition renderer readback was also visually reviewed.
+
+The normal Facility jump regression passed eight ceiling contacts/landings, low-headroom takeoff rejection and intro request suppression. Live-bot pad validation includes missing-render-cache actor fixtures and an independent background-geometry check during movement. Bot-driven knockback is allowed to change the landing destination; the isolated pad test retains the upper-floor destination requirement. Bots are disabled for the final deterministic low-ceiling fixture.
+
+This is extensive local coverage of Temple’s opening, not an exhaustive guarantee for every map, dynamic object or cross-PC interaction. All test traces and renderer captures remain local/ignored.
+
+Final live-bot run passed the independent movement geometry audit, three missing-render-hit-cache actor fixtures, deployment, upper-floor landing, reuse under bot damage, invalid placements, rapid B cancel/LB reselect, ammunition preservation and the isolated ceiling/reset fixture. The scripted UI actions now wait for the published snapshot. An explicit wheel selection is compared with the current item at release, allowing rapid reselect after cancellation without redundant equips from an untouched wheel.
+
+The final neutral-wheel regression also passed its center/reselection checks, 20 alternating switches, 100 reopen/cancel cycles, ownership isolation, inventory changes and GL checks after the rapid-reselect correction.
