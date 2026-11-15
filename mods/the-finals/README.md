@@ -129,7 +129,7 @@ Offline acceptance: set GE32_PAD_TEST=1 and GE32_REGRESSION_PRACTICE=1. Add GE32
 
 ## Neutral equipment-wheel center
 
-Opening LB highlights the equipped item if it is represented in the wheel. A deliberate gentle stick nudge or returning from a sector enters the empty center. Releasing LB from center keeps the current item; recentering and releasing on the same frame also cancels. Move outward again to select an item. Opening and releasing an unchanged item does not enqueue a redundant weapon change. The wheel uses icons for every item and shows only the highlighted item’s name above it. The center stays transparent, with no text panel or repeated equipped labels.
+Opening LB highlights the equipped item if it is represented in the wheel. A deliberate gentle stick nudge or returning from a sector enters the empty center. Releasing LB from center keeps the current item; recentering and releasing on the same frame also cancels. Move outward again to select an item. Opening and releasing an unchanged item does not enqueue a redundant weapon change. The wheel uses icons for every item and shows only the highlighted item’s name beside its icon. The center stays transparent, with no text panel or repeated equipped labels.
 
 ## Temple edge collision and movement stress coverage
 

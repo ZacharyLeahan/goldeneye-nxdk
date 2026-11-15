@@ -98,6 +98,13 @@ static void draw(void*w){
  }
  /* The open center deliberately leaves the world/reticle unobscured. */
  glColor4f(.9f,.94f,1,.18f);glLineWidth(uiScale);arc(cx,cy,inner-2,0,tau);
- if(choice>=0&&choice<count){glColor4f(0,0,0,.7f);centered(cx+1,cy-r-25,itemName(ids[choice]));glColor4f(1,1,1,1);centered(cx,cy-r-26,itemName(ids[choice]));}
+ if(choice>=0&&choice<count){
+  /* Keep the single label beside its selected icon, outside neighboring wedges. */
+  float angle=wheelAngle(choice),dx=cosf(angle),dy=sinf(angle);const char*name=itemName(ids[choice]);float width=textWidth(name);
+  float x=cx+dx*(r+16),y=cy+dy*(r+16)+6;
+  if(dx>.55f)x+=8;else if(dx<-.55f)x-=width+8;else x-=width*.5f;
+  x=fmaxf(12,fminf(vw-width-12,x));y=fmaxf(24,fminf(vh-12,y));
+  glColor4f(0,0,0,.7f);text(x+1,y+1,name);glColor4f(1,1,1,1);text(x,y,name);
+ }
  glPopMatrix();glMatrixMode(GL_PROJECTION);glPopMatrix();glPopAttrib();useProgram(prog);activeTexture(active);
 }
