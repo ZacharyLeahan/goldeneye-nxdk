@@ -93,3 +93,11 @@ Pads are local gadget state and do not yet replicate as shared objects or activa
 The full gadget acceptance suite also passed with three active practice bots, including three explicit missing-render-hit-cache character fixtures. Upper-floor landing, reuse, invalid placement, cancellation, gun return/ammunition checks, ceiling contact and reset all completed without a crash.
 
 After the room-cache change, Facility’s indoor ceiling stress regression passed all eight native jumps/ceiling contacts and exact floor landings, including rejecting takeoff under a real low-clearance fixture.
+
+## Neutral equipment-wheel center
+
+Native wheel regression passed opening on the equipped item, leaving it unchanged without a redundant equip request, a gentle 18% stick nudge entering neutral, outer selection -> center -> release, recenter/release on the same frame, leaving center to reselect, and B cancellation. The full 20-switch / 100-reopen suite passed, including pickup/removal, foreign-player isolation, GL rendering and keeping Jump Pad available with no guns. Opening when the equipped item is absent from the wheel stays neutral.
+
+Nine production-renderer previews passed GL checks (one/two/three/eight items, gun selection, gadget selection and neutral). Highlighted and neutral layouts were visually reviewed on dark and bright backgrounds; subtle icon/name shadows retain contrast. Slots show icons only; only the highlighted item has a name above the wheel. The central disk and repeated labels/instructions were removed.
+
+After the neutral-center update, the full native jump-pad acceptance suite passed again: LB selection, RT deployment, upper-floor landing, reuse, invalid placements, B cancellation, LB gun selection/ammo totals, ceiling contact and context reset.
