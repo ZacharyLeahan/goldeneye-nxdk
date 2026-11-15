@@ -10,7 +10,7 @@ The playable multiplayer build used here is GE32 2026.11.07 e8859fe9 for Windows
 - Weapon silhouettes, translucent panels, readable labels, an equipped marker, and a selected-slot outline.
 - Thread-safe local-player inventory snapshots and queued game-thread equipment changes.
 - A jumps using native gravity and floor landing, with grounded-only takeoff and ceiling checks. B toggles crouch; A also clears crouch before jumping. Y interacts.
-- Slower, smoothed controller aim: horizontal 65%, vertical 60%, smoothing 3/10.
+- Slower controller look: horizontal 65%, vertical 60%, smoothing 3/10. Zoomed centred aim uses full-resolution stick input, time-based smoothing and a finer ADS gain.
 - B backs out of the standard character-selection screen. Online character selection is unchanged.
 
 - Calibrated Medium-style run/sprint pacing, normalized diagonal input, and left-stick-click sprint with contextual cancellation.

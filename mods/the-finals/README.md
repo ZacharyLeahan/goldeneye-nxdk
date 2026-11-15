@@ -48,6 +48,8 @@ The wheel does not pause gameplay. Fire and look input are suppressed while sele
 - weapon-wheel.c: game-thread hook, inventory snapshot/queue, controller handling, regression tests.
 - slide.h: sprint-crouch momentum, deceleration, steering and contextual cancellation.
 - movement-test.h: native speed telemetry and slide integration fixtures.
+- precision-aim.h: full-resolution ADS input publication and simulation-thread camera smoothing.
+- precision-aim-test.h: response math, native-camera and input-handoff acceptance.
 - combat.h: run-speed calibration, diagonal normalization, sprint ramp, input edges, temporary slapper state, ammunition-safe gun restoration.
 - combat-test.h: offline sprint/slap integration checks.
 - jump.h: grounded takeoff, native vertical integration, ceiling checks, input/physics tests.
@@ -178,3 +180,11 @@ All motion goes through the native movement scalars and existing collision/floor
 Offline acceptance: GE32_MOVEMENT_TEST=1 plus GE32_REGRESSION_PRACTICE=1 measures native pace and exercises slide/coast/cancellation. GE32_MOVEMENT_VISUAL_TEST=1 writes a local renderer readback. The Temple stress suite now includes twelve sprint-slide opening approaches as well as the original edge/jump/crouch/pad cases. Flags must be unset for normal play. Cross-PC slide replication is not verified.
 
 Reference context: Embark's [12.0 release notes](https://www.reachthefinals.com/patchnotes/12-00) document current build-dependent movement speeds, and [10.3 notes](https://www.reachthefinals.com/patchnotes/10-30) describe a slide-trigger velocity threshold change. These do not publish a complete slide friction curve. Supplied videos were reviewed but do not establish an exact slide duration/speed measurement; the extension's slide curve is a tuning choice.
+
+## Smooth precision aiming while zoomed
+
+With the installed centred-aim controller profile, zoomed look uses full 16-bit stick samples instead of the native path's repeated conversion to small integer stick values. A continuous radial deadzone, existing horizontal/vertical sensitivity and inversion settings, and an exact time-based 30 ms velocity filter produce fine movement without the visible integer steps. ADS uses an additional 0.80 gain and retains native FOV scaling as zoom changes. Centering an axis stops it without a drifting filter tail; reversal cannot coast in the previous direction. Sub-float angle remainders preserve tiny accumulated movements. These are original feel-oriented tuning choices, not an exact reproduction of a published THE FINALS aim curve.
+
+Input callbacks publish samples under a lock and suppress only the centred ADS look axes; native integer-filter tails are cleared on the input path so they cannot add a second turn. Only the local gameplay thread writes camera angles. Menus, death, player/life mismatch, stale samples and the equipment wheel reset the filter. Ordinary hip-fire look, the N64 aim mode, movement and LT/RT bindings keep their existing paths. The supported GE32 release and installed controller profile remain required.
+
+Offline checks: GE32_STAND_TEST=1 includes response precision, jitter, deadzone, FOV/inversion and 30/60/144 Hz mathematical checks. GE32_AIM_TEST=1 with GE32_REGRESSION_PRACTICE=1 runs 1,440 native-camera ticks covering fine ramps, jitter, release, diagonal look, foreign context, wheel/stale input, native-look suppression and hip/legacy passthrough. These flags inject test input and exit; keep them unset for normal play. Real-controller feel and cross-PC behavior still require playtesting.

@@ -25,7 +25,7 @@ static FILE *logfile;
 #define CURRENT (*(void**)(base+0x303000+392272))
 #define NUMBER (*(int*)(base+0x362c44))
 #define PLAYERS ((void**)(base+0x303000+399456))
-typedef struct {int ids[32],count,current,local,valid,allowJump,grenades;DWORD tickThread;} InventorySnapshot;
+typedef struct {int ids[32],count,current,local,valid,allowJump,grenades,aiming;uintptr_t context;DWORD tickThread;} InventorySnapshot;
 static InventorySnapshot published;
 static SRWLOCK snapshotLock=SRWLOCK_INIT;
 static volatile LONG pendingWeapon=-1,gameTestsReady,testAction;
@@ -46,12 +46,14 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "jump-pad.h"
 #include "grenades.h"
 #include "slide.h"
+#include "precision-aim.h"
 #include "jump-pad-test.h"
 #include "temple-movement-test.h"
 #include "health-bars.h"
 #include "health-bars-test.h"
 #include "grenades-test.h"
 #include "movement-test.h"
+#include "precision-aim-test.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
  int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
@@ -59,7 +61,7 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  if(isLocal&&getenv("GE32_DROP_TEST")){x=0;y=0;}
  if(isLocal){padTestBefore(&x,&y,&buttons);templeStressBefore(&x,&y,&buttons);}
  if(isLocal){combatTestBefore(&buttons);dropTestBefore(&buttons);}
- if(isLocal)movementTestBefore(&x,&y,&buttons);
+ if(isLocal){movementTestBefore(&x,&y,&buttons);precisionAimTestBefore(&x,&y,&buttons);}
  unsigned short rawButtons=buttons;
  if(isLocal){healthBegin();if(getenv("GE32_HEALTH_TEST"))x=y=0;healthTestBefore(&buttons);}
  if(isLocal){grenadeLoadout();grenadeTestBefore(&x,&y,&buttons);}
@@ -67,7 +69,7 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  originalTick(x,y,buttons,oldbuttons);
  if(isLocal&&getenv("GE32_GRENADE_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(grenadeTestFire);
  if(isLocal&&getenv("GE32_HEALTH_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(healthTestFire);
- if(isLocal){combatAfter(rawButtons);slideAfter();combatTestAfter(rawButtons);dropTestAfter();padTestAfter();templeStressAfter();}
+ if(isLocal){combatAfter(rawButtons);slideAfter();precisionAimTestFeed();precisionAimTick();precisionAimTestAfter();combatTestAfter(rawButtons);dropTestAfter();padTestAfter();templeStressAfter();}
  int n=localIndex();if(NUMBER!=n||!CURRENT||CURRENT!=PLAYERS[n])return;
  static int testTicks=0;
  if(getenv("GE32_WHEEL_TEST")){
@@ -85,7 +87,7 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
   FN(void(*)(int,int,int),0x1000+420240)(0,wanted,1);
   FN(void(*)(int,int,int),0x1000+420240)(1,0,1);
  }
- InventorySnapshot next={0};next.current=padCarrying?PAD_ITEM:FN(int(*)(int),0x1000+421920)(0);next.local=n;next.valid=1;next.allowJump=jumpAllowed();next.tickThread=GetCurrentThreadId();
+ InventorySnapshot next={0};next.current=padCarrying?PAD_ITEM:FN(int(*)(int),0x1000+421920)(0);next.local=n;next.context=(uintptr_t)CURRENT;next.aiming=PI(332)!=0;next.valid=1;next.allowJump=jumpAllowed();next.tickThread=GetCurrentThreadId();
  for(int id=4;id<=25;id++){if(id!=23&&FN(int(*)(int),0x1000+43904)(id))next.ids[next.count++]=id;}
  next.grenades=grenadeAmmo();next.ids[next.count++]=GRENADE_ITEM;
  next.ids[next.count++]=PAD_ITEM;publishInventory(n,&next);padPublish();padTestPublishActions();healthPublish();healthTestAfter();
@@ -117,8 +119,9 @@ static unsigned char buttonHook(void *p,int b){
 }
 static short axisHook(void*p,int a){
  pad=p;
- if(p==pad && playing() && (openWheel||getButton(p,9)) && (a==2||a==3||a==4||a==5))return 0;
- return getAxis(p,a);
+ if(p==pad && playing() && (openWheel||getButton(p,9)) && (a==2||a==3||a==4||a==5)){aimSubmit(0,0,0,0,0);return 0;}
+ if(getenv("GE32_AIM_TEST")&&p!=&aimTestDevice&&(a==2||a==3))return 0;
+ short raw=getAxis(p,a);if((a==2||a==3)&&precisionAimCapture(p))return 0;return raw;
 }
 #include "wheel-render.h"
 #include "retro-ui.h"
@@ -247,7 +250,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
  if(reason==DLL_PROCESS_ATTACH){
   DisableThreadLibraryCalls(module);base=(uintptr_t)GetModuleHandleA(NULL);
   logfile=fopen("weapon-wheel.log","w");
-  if(getenv("GE32_STAND_TEST")){testJumpInput();testCombatInput();testPadInput();testSlideInput();ExitProcess(0);}
+  if(getenv("GE32_STAND_TEST")){testJumpInput();testCombatInput();testPadInput();testSlideInput();testPrecisionAim();ExitProcess(0);}
   HMODULE sdl=GetModuleHandleA("SDL2.dll");
   getSize=(void*)GetProcAddress(sdl,"SDL_GL_GetDrawableSize");
   int g=installGameHook();
