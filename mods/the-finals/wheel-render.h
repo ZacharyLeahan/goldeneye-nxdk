@@ -34,7 +34,8 @@ static void rect(float x,float y,float w,float h){float p[]={x,y,x+w,y,x+w,y+h,x
 static void shape(const float*p,int n){polygon(p,n);}
 static void silhouette(int id,float x,float y,float size){
  glPushMatrix();glTranslatef(x-size*.5f,y-size*.22f,0);glScalef(size/100,size/100,1);glLineWidth(fmaxf(1.f,uiScale));
- if(id==26){float p[]={25,3,75,3,97,17,97,39,75,53,25,53,3,39,3,17};shape(p,8);glColor4f(.10f,.12f,.08f,1);float r[]={29,10,71,10,86,20,86,36,71,46,29,46,14,36,14,20};shape(r,8);glColor4f(1,1,1,1);float arrow[]={50,14,66,30,34,30};shape(arrow,3);rect(43,28,14,12);}
+ if(id==PAD_ITEM){float p[]={25,3,75,3,97,17,97,39,75,53,25,53,3,39,3,17};shape(p,8);glColor4f(.10f,.12f,.08f,1);float r[]={29,10,71,10,86,20,86,36,71,46,29,46,14,36,14,20};shape(r,8);glColor4f(1,1,1,1);float arrow[]={50,14,66,30,34,30};shape(arrow,3);rect(43,28,14,12);}
+ else if(id==GRENADE_ITEM){float body[]={40,9,61,9,72,22,72,42,62,53,38,53,28,42,28,22};shape(body,8);rect(43,1,17,10);float lever[]={54,0,70,0,81,25,77,28,66,6,54,6};shape(lever,6);glBegin(GL_LINE_LOOP);for(int k=0;k<16;k++){float a=k*6.2831853f/16;glVertex2f(36+cosf(a)*7,5+sinf(a)*7);}glEnd();}
  else if(id==4||id==5||id==6||id==18||id==19||id==20||id==21){
   int revolver=id==18;float muzzle=id==5?91:78;
   rect(24,12,54,10);rect(24,9,3,4);rect(70,9,3,4);
@@ -85,17 +86,18 @@ static void draw(void*w){
  glColor4f(.015f,.02f,.03f,.025f);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(vw,0);glVertex2f(vw,vh);glVertex2f(0,vh);glEnd();
  int slices=count?count:1;
  for(int j=0;j<slices;j++){
-  float center=-tau*.25f+j*tau/slices,gap=count>1?.018f:0,start=center-tau/(2*slices)+gap,end=center+tau/(2*slices)-gap;int sel=j==choice&&count;
+  float start=0,end=tau,center=0;if(count){wheelBounds(j,&start,&end);center=wheelAngle(j);start+=.018f;end-=.018f;}int sel=j==choice&&count;
   if(sel)glColor4f(.48f,.51f,.57f,.28f);else glColor4f(.035f,.045f,.06f,.18f);
   glBegin(GL_TRIANGLE_STRIP);for(int k=0;k<=64;k++){float a=start+(end-start)*k/64;glVertex2f(cx+cosf(a)*inner,cy+sinf(a)*inner);glVertex2f(cx+cosf(a)*r,cy+sinf(a)*r);}glEnd();
   glLineWidth((sel?3.f:1.f)*uiScale);if(sel)glColor4f(1,1,1,.92f);else glColor4f(.85f,.9f,1,.16f);arc(cx,cy,r-1,start,end);
   if(count){float tx=cx+cosf(center)*174,ty=cy+sinf(center)*174;float iconSize=count>8?56:count>5?69:91;
-   if(ids[j]!=26){glColor4f(0,0,0,.55f);silhouette(ids[j],tx+1.2f,ty-9.8f,iconSize);}
-   glColor4f(sel?1:.86f,sel?1:.89f,sel?1:.94f,1);silhouette(ids[j],tx,ty-11,iconSize);glColor4f(sel?1:.86f,sel?1:.89f,sel?1:.94f,1);
+   if(ids[j]!=PAD_ITEM){glColor4f(0,0,0,.55f);silhouette(ids[j],tx+1.2f,ty-9.8f,iconSize);}
+   glColor4f(sel?1:.86f,sel?1:.89f,sel?1:.94f,ids[j]==GRENADE_ITEM&&snapshotRead().grenades<=0?.3f:1);silhouette(ids[j],tx,ty-11,iconSize);glColor4f(sel?1:.86f,sel?1:.89f,sel?1:.94f,1);
+   if(ids[j]==GRENADE_ITEM){char ammo[16];snprintf(ammo,sizeof(ammo),"%d",snapshotRead().grenades);glColor4f(1,1,1,.85f);centered(tx,ty+44,ammo);}
   }
  }
  /* The open center deliberately leaves the world/reticle unobscured. */
  glColor4f(.9f,.94f,1,.18f);glLineWidth(uiScale);arc(cx,cy,inner-2,0,tau);
- if(choice>=0&&choice<count){glColor4f(0,0,0,.7f);centered(cx+1,cy-r-25,names[ids[choice]]);glColor4f(1,1,1,1);centered(cx,cy-r-26,names[ids[choice]]);}
+ if(choice>=0&&choice<count){glColor4f(0,0,0,.7f);centered(cx+1,cy-r-25,itemName(ids[choice]));glColor4f(1,1,1,1);centered(cx,cy-r-26,itemName(ids[choice]));}
  glPopMatrix();glMatrixMode(GL_PROJECTION);glPopMatrix();glPopAttrib();useProgram(prog);activeTexture(active);
 }

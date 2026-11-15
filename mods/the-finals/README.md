@@ -26,7 +26,7 @@ The profile preserves unrelated settings and makes an INI backup. It uses Custom
 
 | Input | Behavior |
 | --- | --- |
-| LB held | Open equipment wheel: owned guns plus Jump Pad |
+| LB held | Open equipment wheel: guns, Grenades (right), Jump Pad (bottom) |
 | Right stick with wheel open | Select equipment; return to center to clear selection |
 | Release LB | Equip the highlighted item; neutral center keeps current equipment |
 | B with wheel open | Cancel selection |
@@ -37,6 +37,7 @@ The profile preserves unrelated settings and makes an INI backup. It uses Custom
 | Left-stick click while moving forward | Toggle sprint; stop/aim/fire/crouch/wheel/slap cancels |
 | Right-stick click | One native slap, then return to the gun |
 | X | Reload |
+| RT while holding Grenades | Native grenade throw; three per life |
 | RT while holding Jump Pad | Place on valid floor, then return to gun |
 | Walk onto a placed pad | Launch upward; steer with movement stick |
 
@@ -55,6 +56,9 @@ The wheel does not pause gameplay. Fire and look input are suppressed while sele
 - health-bars-render.h: world-anchored segmented bars and compact names.
 - health-bars-test.h: native gunfire, timing, armor, lifecycle, sight and mission-guard tests.
 - retro-ui.h: original 5x7 pixel lettering shared by the gadget and target gauges.
+- grenades.h: once-per-life native grenade loadout and total ammunition.
+- grenades-test.h: native equip/throw/depletion and equipment round-trip acceptance.
+- wheel-layout.h: fixed right/bottom gadget quadrants, upper/left gun sectors.
 - wheel-render.h: production renderer, font atlas, vector silhouettes, translucent layout.
 - preview.c: hidden-window visual test using the production renderer.
 - patch-character-back.py: reversible standard character-menu B-back patch.
@@ -154,3 +158,9 @@ The supplied jump-pad clip demonstrates equipment selection, carrying, floor pre
 The pad uses an original low-poly olive housing, beveled rim, fasteners, a coarse generated ribbed-rubber material and worn identification paint. Perspective-correct UV interpolation keeps the material attached to its projected geometry. The equipment-wheel icon matches the new octagonal device. The preview and interaction hints use subdued game-era colors and original pixel lettering.
 
 Target health uses a dark gunmetal bezel, eight green health cells (amber/red at lower health), a blue armor strip and small uppercase pixel labels. The 3.25-second hold, 0.20-second fade, hit detection and target lifecycle are unchanged. Names and equipment hints share original asset-free 5x7 glyphs; they do not copy or ship the game’s font.
+
+## Fixed gadget directions and grenades
+
+Jump Pad stays at the bottom of LB and native GoldenEye hand grenades stay on the right. Guns share the upper/left half; a single gun appears at the top. The right slot shows remaining grenades and remains visible, dimmed at zero. Empty grenades cannot be equipped; native ammo pickups re-enable them. Each playable local life starts with three, awarded once after gameplay becomes available; throwing or changing equipment never tops them up. Native throw animation, fuse, projectile and damage are retained. This is hand-grenade item 26; the virtual pad uses a separate ID outside native weapons.
+
+Run GE32_GRENADE_TEST=1 with GE32_REGRESSION_PRACTICE=1 only in an offline test installation. It exercises wheel selection, three real native throws, depletion, empty-slot rejection, switching back through the pad/guns, and a native-inventory ammo-pickup fixture. Cross-PC grenade replication remains unverified.
