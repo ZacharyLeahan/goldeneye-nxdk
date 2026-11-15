@@ -1,4 +1,5 @@
 /* Safe ledge traversal: native navigation remains the first choice. */
+static int padTryUpper(JumpVec*,void**,int);
 static int (*originalTryStan)(JumpVec*,void**);
 /* State is owned exclusively by the simulation thread. */
 static struct {void*player;int active,falling,starts,lands,accepted;float originFloor;} drop;
@@ -61,7 +62,7 @@ static int dropBodyClear(JumpVec*to){
  return 1;
 }
 static int dropTryStan(JumpVec*to,void**tile){
- int native=originalTryStan(to,tile);
+ int native=originalTryStan(to,tile);native=padTryUpper(to,tile,native);
  if(getenv("GE32_DROP_BASELINE")||NUMBER!=localIndex()||!jumpAllowed()||!PP(200))return native;
  if(drop.player!=CURRENT){memset(&drop,0,sizeof(drop));drop.player=CURRENT;}
  float dx=to->x-PF(1864),dz=to->z-PF(1872),len=hypotf(dx,dz),ground=PF(144);
