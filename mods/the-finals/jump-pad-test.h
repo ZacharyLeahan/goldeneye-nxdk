@@ -21,6 +21,8 @@ static void padTestBefore(signed char*x,signed char*y,unsigned short*buttons){
  if(!padTestPhase&&padTestTicks==300){
   if(getenv("GE32_PAD_LIVE_TEST"))dropActorFixture();
   padTestPlacePlayer(-134.18f,-325.f,-460.f,180.f);padTestCheck(PF(144)<-460,"lower Temple fixture");
+  void*support=NULL;padTestCheck(padFloor((JumpVec){-134.18f,-468.7878f,-325.f},&support),"enlarged pad fits clear lower floor");padTestCheck(!padFloor((JumpVec){-150,468.7878f,-690},&support),"enlarged footprint rejects upper-rim overhang");padTestCheck(padContact(70,0)&&!padContact(95,0)&&!padContact(68,68),"octagonal contact accepts the larger deck but rejects outside corners");
+  if(logfile){fprintf(logfile,"PASS pad size: diameter=%.0f, clear floor, rim-overhang rejection and visible-octagon contact\n",PAD_RADIUS*2);fflush(logfile);}
   FN(int(*)(int),0x1000+44224)(5);FN(void(*)(void),0x1000+459232)();
 
   padTestAmmo[0]=testTotalAmmo(1);padTestAmmo[1]=testTotalAmmo(2);padTestHealth=FN(float(*)(void),0x1000+124352)();for(int h=0;h<2;h++){padTestGuns[h]=HI(h,0);padTestClips[h]=HI(h,44);}padTestPhase=1;padTestWait=0;InterlockedExchange(&padTestRenderPending,1);
@@ -33,7 +35,7 @@ static void padTestBefore(signed char*x,signed char*y,unsigned short*buttons){
   for(int h=0;h<2;h++)padTestCheck(HI(h,0)==padTestGuns[h]&&HI(h,44)==padTestClips[h],"placing preserved guns and magazines");
   padTestPhase=4;padTestWait=0;
  }
- if(padTestPhase==4){*buttons=8;if(gadget.launches){*buttons=0;padTestPhase=5;padTestWait=0;}}
+ if(padTestPhase==4){*buttons=8;if(gadget.launches){float contact=gadget.lastContactDistance;padTestCheck(contact<90,"launch contact stays on visible enlarged pad");if(!getenv("GE32_PAD_LIVE_TEST"))padTestCheck(contact>56,"new outer deck launches before the old tiny footprint");if(logfile){fprintf(logfile,"PASS enlarged pad outer-deck launch distance=%.2f\n",contact);fflush(logfile);}*buttons=0;padTestPhase=5;padTestWait=0;}}
  if(padTestPhase==5&&padTestWait%12==0&&logfile){fprintf(logfile,"pad flight test xz=%.2f %.2f foot=%.2f floor=%.2f v=%.2f ceilingStops=%d\n",PF(1864),PF(1872),PF(140),PF(144),PF(152),ceilingStops);fflush(logfile);}
  if(padTestPhase==5){PF(396)=0;padTestPeak=fmaxf(padTestPeak,PF(140));if(PF(140)>540)*buttons=8;if(PF(1872)<-740)*buttons=0;}
  if(padTestPhase==6){*buttons=0;}

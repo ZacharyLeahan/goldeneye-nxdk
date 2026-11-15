@@ -14,6 +14,8 @@ The playable multiplayer build used here is GE32 2026.11.07 e8859fe9 for Windows
 - B backs out of the standard character-selection screen. Online character selection is unchanged.
 
 - Left-stick-click sprint with a smooth 35% speed boost and contextual cancellation.
+- A larger deployable jump pad with a native-era military-equipment look, matched placement/contact footprint, and immediate launch on contact.
+- GoldenEye-inspired pixel lettering, green health cells and blue armor indicators, with no copied game assets.
 - Confirmed-hit health bars above targets, with independent timers and a 3.25-second hold plus 0.20-second fade measured from supplied gameplay footage.
 - Right-stick-click quick slap using the native palm animation/strike dispatch, followed by ammunition-safe gun restoration.
 
