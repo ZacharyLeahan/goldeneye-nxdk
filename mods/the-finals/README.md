@@ -98,3 +98,7 @@ The support footprint retains the upper floor until the player clears its edge. 
 Set GE32_DROP_TEST=1 only for the offline Temple integration fixture. It launches practice, isolates the local player from practice-bot damage, repositions the test player at the upper opening, tests walking/jumping/crouched drops and geometry traces, then exits. GE32_DROP_BASELINE=1 disables the fallback for diagnostic comparison. Neither variable should be set for ordinary play.
 
 For deterministic wheel regression, set GE32_REGRESSION_PRACTICE=1 alongside GE32_WHEEL_TEST=1. This starts an isolated Temple practice session rather than a solo mission with hostile guards. It is a test-only flag.
+
+Character clearance uses native movement bounds rather than character bullet-hit caches. Jump eligibility follows the native controllable camera state (normal camera, or first-person camera with its timer enabled), together with the existing pause/menu/cinematic and match-freeze gates. Pressing or holding A during the intro does not queue a jump for the control handoff; release and press A after play begins.
+
+GE32_DROP_LIVE_TEST=1 alongside GE32_DROP_TEST=1 retains three bots and adds actor-bound collision fixtures, including temporarily missing render-hit caches restored within the simulation-thread fixture. Damage from bots remains enabled. GE32_INTRO_TEST=1 alongside GE32_JUMP_TEST=1 attempts jumps throughout the intro, verifies unchanged jump physics and an empty queue at gameplay handoff, then runs the ordinary jump suite. These flags are only for offline tests.

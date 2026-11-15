@@ -62,3 +62,13 @@ After sprint/slap integration, 8 moving native-physics jumps and landings passed
 Coverage is local/offline and specific to the Temple opening plus the existing regression suites. Sampled body/landing checks do not prove every map, door, thin obstacle, or cross-PC interaction.
 
 After drop integration, controller-edge checks, six native slap cases, sprint cancellation, and eight moving jumps passed. The wheel suite passed all 20 switches, 100 rapid reopen/cancels, ownership isolation, inventory changes, empty state and GL checks in isolated practice. A prior solo-mission run failed a late switch assertion; the deterministic practice fixture excludes hostile interference and explicitly supplies both test weapons.
+
+## Character-clearance crash and intro lockout correction
+
+The user reported a real Temple jump crash after the earlier isolated suite passed. Its stack entered projectileFindCollidingProp -> character detailed-hit testing -> a null ModelHitEntry chain. The previous fixture disabled practice bots and therefore did not cover this failure. Character clearance now uses native movement polygons with conservative bounds, while object/door traces exclude the detailed character-hit path.
+
+The intro gate also follows native controllable-camera semantics, including first-person timer readiness and match freezing. The input-edge test checks that holding A across the handoff does not queue a jump and that releasing and pressing again rearms it. The native intro test consumed 1,134 queued jump attempts without changing jump physics or retaining a request, then passed eight normal jumps and landings after control began.
+
+The bot-present fixture retains three active bots and checks blocking movement bounds while each tested actor temporarily has no render-hit cache; it restores that pointer immediately on the simulation thread before native gameplay resumes. Ordinary damage remains enabled in this live-bot test, so health loss from bots is permitted. The isolated no-fall-health-loss coverage above remains separate.
+
+Final acceptance: all three bot-present gap cases landed successfully with full health in the final run. Nine explicit missing-render-cache actor fixtures blocked correctly; the deck/opening traces passed. Strict -Wall -Wextra -Werror compilation and controller-edge checks also passed.

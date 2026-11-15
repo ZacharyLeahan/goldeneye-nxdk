@@ -3,6 +3,31 @@ static int (*originalTryStan)(JumpVec*,void**);
 /* State is owned exclusively by the simulation thread. */
 static struct {void*player;int active,falling,starts,lands,accepted;float originFloor;} drop;
 static void*floorBelow(float x,float y,float z,float*height){JumpVec p={x,y,z};return FN(void*(*)(JumpVec*,void*,float*),0x1000+879552)(&p,NULL,height);}
+/* Use movement bounds, never render-time ModelHitEntry chains, for actors. */
+static int dropActorChecks,dropActorNoCache;
+static int dropActorsClear(JumpVec a,JumpVec b,int*occupied){
+ FN(void(*)(int*),0x1000+280624)(occupied);
+ short*list=*(short**)(base+0x303000+186440);
+ if(!list)return 0;
+ for(int i=0;i<1024&&list[i]>=0;i++){
+  int index=list[i];if(index>=1024)return 0;
+  void*prop=(void*)(base+0x303000+128832+index*96);
+  if(prop==PP(200)||(*(unsigned char*)prop!=3&&*(unsigned char*)prop!=6)||!*(void**)((unsigned char*)prop+8))continue;
+  dropActorChecks++;void*chr=*(void**)((unsigned char*)prop+8);if(chr&&!*(void**)((unsigned char*)chr+40))dropActorNoCache++;
+  float*polygon=NULL,top=0,bottom=0;int edges=0;
+  FN(void(*)(void*,float**,int*,float*,float*),0x1000+276544)(prop,&polygon,&edges,&top,&bottom);
+  if(!polygon||edges<=0)continue;if(edges>32)return 0;
+  float lo[3]={INFINITY,bottom,INFINITY},hi[3]={-INFINITY,top,-INFINITY};
+  for(int j=0;j<edges;j++){lo[0]=fminf(lo[0],polygon[j*2]);hi[0]=fmaxf(hi[0],polygon[j*2]);lo[2]=fminf(lo[2],polygon[j*2+1]);hi[2]=fmaxf(hi[2],polygon[j*2+1]);}
+  float start[3]={a.x,a.y,a.z},delta[3]={b.x-a.x,b.y-a.y,b.z-a.z},enter=0,leave=1;
+  for(int axis=0;axis<3;axis++){
+   if(fabsf(delta[axis])<.00001f){if(start[axis]<lo[axis]||start[axis]>hi[axis]){enter=2;break;}}
+   else{float t0=(lo[axis]-start[axis])/delta[axis],t1=(hi[axis]-start[axis])/delta[axis];enter=fmaxf(enter,fminf(t0,t1));leave=fminf(leave,fmaxf(t0,t1));}
+  }
+  if(enter<=leave)return 0;
+ }
+ return 1;
+}
 /* Background engine rays are infinite; accept hits only on this segment. */
 static int dropSegmentClear(JumpVec from,JumpVec to){
  float dx=to.x-from.x,dy=to.y-from.y,dz=to.z-from.z,len2=dx*dx+dy*dy+dz*dz;
@@ -21,7 +46,8 @@ static int dropSegmentClear(JumpVec from,JumpVec to){
  int occupied[64];for(int i=0;i<64;i++)occupied[i]=-1;
  FN(void(*)(void*,int*),0x1000+275920)(PP(200),occupied);
  JumpVec pos,normal;
- return !FN(int(*)(void*,JumpVec*,JumpVec*,unsigned,JumpVec*,JumpVec*,int*),0x1000+721344)(PP(200),&from,&to,0x1f,&pos,&normal,occupied);
+ if(!dropActorsClear(from,to,occupied))return 0;
+ return !FN(int(*)(void*,JumpVec*,JumpVec*,unsigned,JumpVec*,JumpVec*,int*),0x1000+721344)(PP(200),&from,&to,0x13,&pos,&normal,occupied);
 }
 static int dropBodyClear(JumpVec*to){
  float dx=to->x-PF(1864),dz=to->z-PF(1872),len=hypotf(dx,dz);if(len<.001f)return 1;
