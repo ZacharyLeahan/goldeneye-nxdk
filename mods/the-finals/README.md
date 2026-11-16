@@ -209,3 +209,21 @@ Offline acceptance: GE32_OPENING_TEST=1 with GE32_REGRESSION_PRACTICE=1 launches
 Grounded traversal now returns to native collision when the center is on a valid floor and any unsupported toe samples are blocked by actual static wall geometry. This reconciles the extension's conservative 31-unit sweep with GoldenEye's 30-unit wall clearance. Previously, landing against a wall could leave airborne traversal active and reject the first backward step. Real open ledges retain their traversal context; actors and temporary props cannot substitute for static support in this decision.
 
 GE32_WALL_ESCAPE_TEST=1 with GE32_REGRESSION_PRACTICE=1 runs four offline regressions: solid wall and reported jamb-side approaches, each with the pad removed or retained under the landing. It verifies backward escape after landing, finite grounded movement/health and escape even when the retained pad bounces again. Normal launches must leave the flags unset. The startup log includes revision=finals-motion-v3 so an older still-running DLL can be distinguished from the installed one.
+
+## Per-level mechanics sweep and slope landings
+
+The supported GE32 release exposes 20 multiplayer map entries, including nine additions to the original eleven, and 20 mission levels. The offline harness uses real floor tiles, nearby clear lanes and, when needed, tile centroids elsewhere in the map. Recorded clear fixtures avoid Archives' crowded opening cell and Jungle's low branches. It exercises movement/aiming, jump/landing, sprint/slide, native quick melee, wheel selection, pad placement/contact/landing, grenade consumption, native target health with timed fade, reload accounting and eight radial movement routes. Interaction coverage checks delivery of the native use request; it does not enumerate every door or console.
+
+Run only in a separate prepared test installation containing the sweep DLL and your own extracted assets:
+
+```sh
+python run-level-sweep.py <test-runtime> <ignored-output>/results.json --mode all
+```
+
+Use --mode multiplayer or --mode mission and optional --name for a single named setup. Results and raw logs are written to the supplied ignored output directory. The script verifies the expected stage, clears stale logs, and imposes a process deadline. The fixtures inject input, isolate incoming damage/shot push, move the test player and terminate the game; keep GE32_LEVEL_SWEEP and related flags unset for normal play. A blocked walking approach may use a clearly logged contact fixture at the actual deployed pad. This separates native actor/door blockage from pad launch behavior.
+
+Grounded traversal now recognizes a continuous native navigation surface under its full footprint, including ramps and stairs. Previously the highest uphill toe could hold the player above the center floor indefinitely after jumping. A native tile walk must reach every supported toe on the same sampled surface; actual wall obstruction may account for an unsupported toe. The feet must already rest on the connected support envelope, and active jumps/pad flight or appreciable vertical velocity cannot use this handoff. Native vertical movement then settles onto its own floor. Real openings retain separate-layer support rather than being mistaken for slopes.
+
+Melee and sprint context now resets on stage change and timer rewind as well as player allocation change. GE32_COMBAT_LIFECYCLE_TEST=1 with GE32_REGRESSION_PRACTICE=1 validates these cases in the native tick using a temporary stage/timer fixture. This prevents stale saved melee state from restoring a previous level's weapon/ammo state when the allocation is reused. The startup revision is map-sweep-slopes-v4.
+
+The sweep covers selected floor fixtures and routes in each setup, not every room, objective, weapon combination or network session. See VALIDATION.md for the coverage matrix and fixture limitations.

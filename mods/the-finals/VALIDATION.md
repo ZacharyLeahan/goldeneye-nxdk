@@ -209,3 +209,51 @@ Four native regression cases passed: solid-wall and reported jamb-side blocked j
 The ledge/slide cases 0–67 completed with the new grounded guard. The long session then became gameplay-unavailable during the first pad route; the recorder had continued appending repeated samples while its input-side tick was paused. Its after-step guard now matches the input guard and reports unavailable gameplay explicitly. The final eight pad routes passed in a fresh session: eight upper-floor landings, zero escapes and zero physical failures. The 76 distinct routes are therefore covered across the two sessions rather than claimed as a single uninterrupted pass.
 
 The final DLL also passed all eight high-opening routes and static clearance/sill checks after the grounded cleanup change. Strict -Wall -Wextra -Werror compilation passed.
+
+## Full release map sweep
+
+The installed release's actual multiplayer table was inspected rather than assuming the upstream source's original eleven-map list. Twenty multiplayer setups and twenty mission levels completed the mechanics sweep. The matrix combines core smoke tests, extended health/reload and radial tests, and targeted reruns after the fixes; it is not one uninterrupted forty-setup session. Each setup has eight completed radial routes, for 320 designated routes across both modes.
+
+| Setup | Multiplayer entry: PASS | Mission stage: PASS |
+|---|---:|---:|
+| Dam | 17 | 33 |
+| Facility | 7 | 34 |
+| Runway | 14 | 35 |
+| Surface I / Surface MP | 16 | 36 |
+| Bunker I | — | 09 |
+| Silo | — | 20 |
+| Frigate | 20 | 26 |
+| Surface II | — | 43 |
+| Bunker II / Bunker MP | 8 | 27 |
+| Statue | 12 | 22 |
+| Archives | 9 | 24 |
+| Streets | 15 | 29 |
+| Depot | 18 | 30 |
+| Train | — | 25 |
+| Jungle | 19 | 37 |
+| Control | — | 23 |
+| Caverns | 10 | 39 |
+| Cradle | 13 | 41 |
+| Aztec | — | 28 |
+| Egyptian | 11 | 32 |
+| Temple | 1 | — |
+| Complex | 2 | — |
+| Caves | 3 | — |
+| Library | 4 | — |
+| Basement | 5 | — |
+| Stack | 6 | — |
+
+Core checks exercise real native movement while aiming/turning, jumping and landing, sprint-to-slide, quick slap with gun/ammo return, actual wheel selection, pad deployment and launch/landing, one native grenade throw, confirmed target damage, timed hold/fade/expiration and native magazine reload without ammo creation. The original eleven multiplayer maps received a core pass followed by an extended pass; Silo and Cradle coverage is similarly composed from complementary successful phases. Script-invulnerable targets must not invent damage confirmation; Cradle then uses an actually damageable target for the timed bar check.
+
+Two gameplay defects were reproduced and fixed:
+
+- Caves remained in extended traversal after a jump onto a slope: feet at 1260.92 while the actual containing floor was 1248.24, a roughly 12.68-unit hover. The settled-floor test also failed on a Silo route. Highest-toe support was never uniform on these surfaces. Connected native tile walks now permit grounded handoff; the exact failing Caves and Silo fixtures pass all eight radial routes after the change. Disconnected ledge layers and airborne bodies retain their traversal checks.
+- A native-tick context fixture changed stage while retaining the player allocation; the old combat code kept melee phase 1 and cooldown 11. Stage change, clock rewind and allocation change now clear melee/sprint state and queued requests. All three lifecycle cases pass after the fix.
+
+Fixture corrections are separated from gameplay changes. Facility's ordinary grounded scenery contact reproduced with added ledge admission disabled; strict background body auditing therefore applies to extended traversal, while native grounded movement retains its own collision semantics. Incoming guard damage and shot push are isolated to keep route inputs deterministic. Control retries blocked sprint headings and logs a contact relocation if native actors/doors prevent walking directly to a placed pad. Frigate's boat start and Cradle's distant narrow walkways require a broader search over real map floors. Archives and Jungle use recorded open-floor fixtures. Test-only relocations are excluded from body-path auditing.
+
+These checks sample routes in every setup; they do not constitute complete mission playthroughs, every possible room/door/gadget combination, or cross-PC replication tests. Incoming damage isolation means the broad sweep is not a fall-damage validation. The separate normal-health Temple pad regression covers launch/landing without that override. ROMs, extracted assets, screenshots, binaries and raw logs remain ignored.
+
+Final focused regressions also passed wheel neutrality/B cancellation, 20 alternating switches, 100 rapid reopen/cancels and foreign-player isolation; six native melee cases including dual magazines and sniper palm return; original pad equipment, upper-floor landing, reuse, invalid placement/cancel, real-ceiling stopping and owner reset at normal health; and all eight high-opening routes. Temple's long 76-route regression was partitioned after the external runner watchdog stopped it: routes 0–58 completed their deferred audits before route 59 began, then routes 59–75 passed in a separate run with zero escapes and physical failures. The interruption was a test-runner time limit, not a recorded gameplay failure.
+
+The final exact binary also passed all four post-landing wall-escape cases, all three combat lifecycle cases, and eight radial routes at each of the original Caves and Silo failing anchors. The coverage audit found no missing core phase or radial route in any of the forty setup records.

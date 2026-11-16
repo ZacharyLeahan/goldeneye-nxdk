@@ -58,6 +58,8 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "ads-movement-test.h"
 #include "airborne-opening-test.h"
 #include "wall-escape-test.h"
+#include "level-sweep-test.h"
+#include "combat-lifecycle-test.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
  int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
@@ -69,14 +71,15 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  unsigned short rawButtons=buttons;
  if(isLocal){healthBegin();if(getenv("GE32_HEALTH_TEST"))x=y=0;healthTestBefore(&buttons);}
  if(isLocal){grenadeLoadout();grenadeTestBefore(&x,&y,&buttons);}
- if(isLocal)adsMovementBefore(&x,&y,&buttons);
+ if(isLocal){adsMovementBefore(&x,&y,&buttons);sweepBefore(&x,&y,&buttons);}
  if(isLocal){padBefore(&buttons,&oldbuttons);combatBefore(&buttons,&oldbuttons);slideBefore();}
  int aimMove=isLocal&&aimMoveReady(buttons),stance=0,autoStance=0;float aimPushForward=0,aimPushSide=0;if(aimMove){aimPushForward=-PF(432)*PF(392)+PF(440)*PF(388);aimPushSide=-PF(432)*PF(388)-PF(440)*PF(392);stance=PI(184);autoStance=PI(14004);buttons&=~15;oldbuttons&=~15;}
  originalTick(x,y,buttons,oldbuttons);
+ if(isLocal&&getenv("GE32_LEVEL_SWEEP")&&jumpAllowed())FN(void(*)(int),0x74290)(sweep.fire);
  if(aimMove&&PI(332)){PI(184)=stance;PI(14004)=autoStance;aimMoveAfter();PF(424)+=aimPushForward;PF(416)+=aimPushSide;}
  if(isLocal&&getenv("GE32_GRENADE_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(grenadeTestFire);
  if(isLocal&&getenv("GE32_HEALTH_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(healthTestFire);
- if(isLocal){combatAfter(rawButtons);slideAfter();precisionAimTestFeed();precisionAimTick();precisionAimTestAfter();combatTestAfter(rawButtons);dropTestAfter();padTestAfter();templeStressAfter();}
+ if(isLocal){combatAfter(rawButtons);slideAfter();precisionAimTestFeed();precisionAimTick();precisionAimTestAfter();combatTestAfter(rawButtons);dropTestAfter();padTestAfter();templeStressAfter();sweepAfter();combatLifecycleTest();}
  int n=localIndex();if(NUMBER!=n||!CURRENT||CURRENT!=PLAYERS[n])return;
  static int testTicks=0;
  if(getenv("GE32_WHEEL_TEST")){
@@ -113,6 +116,7 @@ static const char*itemName(int id){return id==PAD_ITEM?"Jump Pad":id>=0&&id<=GRE
 #include "wheel-layout.h"
 static void inventory(void){InventorySnapshot s=snapshotRead();count=s.count;memcpy(ids,s.ids,sizeof(ids));}
 static unsigned char buttonHook(void *p,int b){
+ if(getenv("GE32_LEVEL_SWEEP"))return 0;
  if(!pad)pad=p;
  if(p==pad && playing()){
   if(b==7||b==8)return combatButton(b,getButton(p,b),snapshotRead().allowJump&&!openWheel&&!FN(int(*)(void),0x1000+1453264)());
@@ -125,9 +129,10 @@ static unsigned char buttonHook(void *p,int b){
  return getButton(p,b);
 }
 static short axisHook(void*p,int a){
+ if(getenv("GE32_LEVEL_SWEEP"))return 0;
  pad=p;
  if(p==pad && playing() && (openWheel||getButton(p,9)) && (a==2||a==3||a==4||a==5)){aimSubmit(0,0,0,0,0);return 0;}
- if(getenv("GE32_AIM_TEST")&&p!=&aimTestDevice&&(a==2||a==3))return 0;
+ if((getenv("GE32_AIM_TEST")||getenv("GE32_LEVEL_SWEEP"))&&p!=&aimTestDevice&&(a==2||a==3))return 0;
  short raw=getAxis(p,a);if((a==2||a==3)&&precisionAimCapture(p))return 0;return raw;
 }
 #include "wheel-render.h"
@@ -225,12 +230,13 @@ static int testTick(void*w){
 static void swapHook(void*w){
  renderThread=GetCurrentThreadId();
  if(!useProgram){useProgram=(void*)wglGetProcAddress("glUseProgram");activeTexture=(void*)wglGetProcAddress("glActiveTexture");}
- dropTestLaunch();
- if(getenv("GE32_GRENADE_TEST")){int selected=InterlockedExchange(&grenadeTestSelect,0);if(selected){wheelUpdate(1,0,0,0);int index=-1;for(int i=0;i<count;i++)if(ids[i]==selected)index=i;testAssert(index>=0,"equipment present in wheel");float angle=wheelAngle(index),x=cosf(angle),y=sinf(angle);wheelUpdate(1,0,x,y);testAssert(choice>=0&&ids[choice]==selected,"fixed directional slot selects requested gadget");wheelUpdate(0,0,x,y);}}
- padTestRenderTick(w);if(!getenv("GE32_PAD_TEST"))padPoll();
+ dropTestLaunch();sweepLaunch();
+ if(getenv("GE32_GRENADE_TEST")||getenv("GE32_LEVEL_SWEEP")){int selected=InterlockedExchange(&grenadeTestSelect,0);if(selected){wheelUpdate(1,0,0,0);int index=-1;for(int i=0;i<count;i++)if(ids[i]==selected)index=i;testAssert(index>=0,"equipment present in wheel");float angle=wheelAngle(index),x=cosf(angle),y=sinf(angle);wheelUpdate(1,0,x,y);testAssert(choice>=0&&ids[choice]==selected,"fixed directional slot selects requested gadget");wheelUpdate(0,0,x,y);}}
+ padTestRenderTick(w);if(!getenv("GE32_PAD_TEST")&&!getenv("GE32_LEVEL_SWEEP"))padPoll();
  if(testTick(w)){swapWindow(w);return;}
  int lb=pad?getButton(pad,9):0,back=pad?getButton(pad,1):0;
  float x=pad?getAxis(pad,2)/32767.f:0,y=pad?getAxis(pad,3)/32767.f:0;
+ if(getenv("GE32_LEVEL_SWEEP")){lb=back=0;x=y=0;}
  wheelUpdate(lb,back,x,y);
  if(useProgram&&activeTexture){drawPad(w);drawHealth(w);if(openWheel)draw(w);}
  healthTestRender(w);
@@ -270,7 +276,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
   int a=replaceImport("SDL_GameControllerGetButton",buttonHook,(void**)&getButton);
   int b=replaceImport("SDL_GameControllerGetAxis",axisHook,(void**)&getAxis);
   int c=replaceImport("SDL_GL_SwapWindow",swapHook,(void**)&swapWindow);
-  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d portal=%d revision=finals-motion-v3\n",g,j,d,p,h,a,b,c,portal);fflush(logfile);}
+  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d portal=%d revision=map-sweep-slopes-v4\n",g,j,d,p,h,a,b,c,portal);fflush(logfile);}
  }
  return TRUE;
 }
