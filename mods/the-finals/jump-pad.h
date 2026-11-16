@@ -3,8 +3,9 @@
 #define PAD_RADIUS 78.f
 #define PAD_IMPULSE 26.f
 static volatile LONG padCarrying,padPlaceRequest,padTriggerBlock,padCancelRequest;
-static int padRTHeld;
-static struct {void*owner;int stage,timer,placed,valid,flight,launches,deploys;float cooldown,pulse,lastContactDistance;JumpVec position,preview;void*tile;} gadget;
+static int padRTHeld,portalClampInstalled,portalClampSkips;
+static struct {void*owner;int timer;JumpVec position;} portalStep;
+static struct {void*owner;int stage,timer,placed,valid,flight,airPortal,portalBridge,launches,deploys;float cooldown,pulse,lastContactDistance;JumpVec position,preview;void*tile;} gadget;
 typedef struct {int carrying,valid,placed,visible,previewVisible;float face[24][3],ghost[24][3],pulse,carryBlend;} PadSnapshot;
 static PadSnapshot padPublished;
 static float padCarryBlend;
@@ -52,26 +53,51 @@ static void padBeforeVertical(void){
  if(gadget.cooldown<=0&&touching&&fabsf(PF(140)-gadget.position.y)<8&&PF(152)<=.6f&&fabsf(PF(140)-PF(144))<2){
   float head=fmaxf(PF(13940),120.f)+14.f;
   if(jumpCeiling(PF(140)+head+80)>PF(140)+head+8){
-   jumpOriginFloor=PF(144);PI(184)=PI(14004)=2;PF(140)+=.05f;PF(152)=PAD_IMPULSE;jumpActive=1;jumpCooldown=12;gadget.flight=1;gadget.cooldown=45;gadget.pulse=1;gadget.lastContactDistance=hypotf(PF(1864)-gadget.position.x,PF(1872)-gadget.position.z);gadget.launches++;
+   jumpOriginFloor=PF(144);PI(184)=PI(14004)=2;PF(140)+=.05f;PF(152)=PAD_IMPULSE;jumpActive=1;jumpCooldown=12;gadget.flight=1;gadget.airPortal=gadget.portalBridge=0;gadget.cooldown=45;gadget.pulse=1;gadget.lastContactDistance=hypotf(PF(1864)-gadget.position.x,PF(1872)-gadget.position.z);gadget.launches++;
    if(logfile){fprintf(logfile,"pad launch=%d foot=%.2f impulse=%.2f\n",gadget.launches,PF(140),PF(152));fflush(logfile);}
   }else gadget.cooldown=20;
  }
 }
-static int padTryUpper(JumpVec*to,void**tile,int native){
+/* Find actual static support under an un-navigable aperture. A distant
+ * navigation anchor must never create an invisible floor under the player. */
+static int padBackgroundFloor(float x,float foot,float z,float*height){
+ if(!collisionPrepareBox((JumpVec){x,foot-2048,z},(JumpVec){x,foot+.5f,z}))return 0;
+ int total=*(int*)(base+0x228000+4208);float scale=*(float*)(base+0x228000+4252),best=-INFINITY;if(total<1||total>2048||!isfinite(scale)||scale<=0)return 0;
+ JumpVec a={x,foot+.5f,z},b={x,foot-2048,z};for(int room=1;room<total;room++){if(!*(void**)(base+0x303000+27264+room*0x68+0x40))continue;JumpHit hit={0};if(FN(int(*)(JumpVec*,JumpVec*,int,JumpHit*),0x1000+13744)(&a,&b,room,&hit)){float y=hit.position.y/scale;if(isfinite(y)&&y<=foot+.6f&&y>=foot-2048&&y>best)best=y;}}
+ if(!isfinite(best))return 0;*height=best;return 1;
+}
+static int padTryAirborne(JumpVec*to,void**tile,int native){
  if(!gadget.flight||NUMBER!=localIndex()||!jumpAllowed())return native;
- float dx=to->x-PF(1864),dz=to->z-PF(1872),len=hypotf(dx,dz);if(len<.001f||len>128)return native;
- float upper;void*t=floorBelow(to->x+dx/len*68,PF(140)+1,to->z+dz/len*68,&upper);
- if(!t||!isfinite(upper)||upper<=gadget.position.y+16||PF(140)<upper+2)return native;
+ float dx=to->x-PF(1864),dz=to->z-PF(1872),len=hypotf(dx,dz);if(!isfinite(len)||len<.001f||len>128)return native;
+ float y;void*dest=floorBelow(to->x,PF(140)+1,to->z,&y);int bridge=dest==NULL;
+ if(!dest){
+  for(float distance=32;distance<=640;distance+=32){float h;void*t=floorBelow(to->x+dx/len*distance,PF(140)+1,to->z+dz/len*distance,&h);if(t&&isfinite(h)&&h<=PF(140)-2&&PF(140)-h<2048&&FN(int(*)(void*,float,float),0xd5e10)(t,to->x+dx/len*distance,to->z+dz/len*distance)){dest=t;y=h;break;}}
+ }
+ if(!dest||!isfinite(y)||PF(140)<y+2)return native;
+ if(bridge){float support;if(!padBackgroundFloor(to->x,PF(140),to->z,&support))return native;}
+ if((!portalClampInstalled||getenv("GE32_OPENING_BASELINE"))&&(bridge||y<=gadget.position.y+16))return native;
  if(!dropBodyClear(to))return 0;
- float y;void*dest=floorBelow(to->x,PF(140)+1,to->z,&y);if(!dest||!isfinite(y))return native;
+ if(!native||bridge)gadget.airPortal=1;gadget.portalBridge=bridge;portalStep.owner=CURRENT;portalStep.timer=*(int*)(base+0x303000+211432);portalStep.position=*to;
  *tile=dest;FN(void(*)(void),0x1000+876000)();return 1;
+}
+/* A high window sill has BG geometry but may have no walkable STAN tile.
+ * Retain physical foot support while straddling it instead of falling through. */
+static float padPortalSupport(float support){
+ if(!gadget.airPortal)return support;float foot=PF(140);if(!isfinite(foot)||foot<support)return support;
+ float scale=*(float*)(base+0x228000+4252);int total=*(int*)(base+0x228000+4208);if(!isfinite(scale)||scale<=0||total<1||total>2048)return support;
+ collisionPrepareBox((JumpVec){PF(1864)-31,support,PF(1872)-31},(JumpVec){PF(1864)+31,foot+1,PF(1872)+31});
+ for(int point=0;point<17;point++){float dx=0,dz=0;if(point){float angle=(point-1)*.3926990817f;dx=31*cosf(angle);dz=31*sinf(angle);}JumpVec a={PF(1864)+dx,foot+.5f,PF(1872)+dz},b={a.x,support-.5f,a.z};
+  for(int room=1;room<total;room++){if(!*(void**)(base+0x303000+27264+room*0x68+0x40))continue;JumpHit hit={0};if(FN(int(*)(JumpVec*,JumpVec*,int,JumpHit*),0x1000+13744)(&a,&b,room,&hit)){float y=hit.position.y/scale;if(isfinite(y)&&y<=foot+.6f&&y>support)support=y;}}
+ }
+ return support;
 }
 static void padPrepareVertical(int*useHeight,float*offset){
  if(!gadget.flight||!jumpAllowed())return;
  int uniform;float support=traversalFloorSupport(&uniform);
- if(isfinite(support)){PF(144)=support;*useHeight=1;*offset=0;}
+ if(!isfinite(support)&&gadget.airPortal)padBackgroundFloor(PF(1864),PF(140),PF(1872),&support);
+ if(isfinite(support)){support=padPortalSupport(support);PF(144)=support;*useHeight=1;*offset=0;}
 }
-static void padAfterVertical(void){if(gadget.flight&&PF(140)<=PF(144)+.2f&&PF(152)<=0){gadget.flight=0;if(logfile){fprintf(logfile,"pad landed floor=%.2f\n",PF(144));fflush(logfile);}}}
+static void padAfterVertical(void){if(gadget.flight&&PF(140)<=PF(144)+.2f&&PF(152)<=0){int uniform;float nativeSupport=traversalFloorSupport(&uniform);if(isfinite(nativeSupport)&&fabsf(PF(140)-nativeSupport)<1.5f){gadget.flight=gadget.airPortal=gadget.portalBridge=0;if(logfile){fprintf(logfile,"pad landed floor=%.2f\n",PF(144));fflush(logfile);}}}}
 static int padProjectDepth(JumpVec p,float*out,float*depth){
  void*m=FN(void*(*)(void),0x1000+53376)();if(!m)return 0;FN(void(*)(void*,JumpVec*),0x1000+539920)(m,&p);
  float fov=FN(float(*)(void),0x1000+53952)(),aspect=FN(float(*)(void),0x1000+53984)();

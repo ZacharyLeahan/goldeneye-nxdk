@@ -44,6 +44,7 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "ledge-drop.h"
 #include "ledge-drop-test.h"
 #include "jump-pad.h"
+#include "airborne-navigation.h"
 #include "grenades.h"
 #include "slide.h"
 #include "precision-aim.h"
@@ -54,6 +55,7 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "grenades-test.h"
 #include "movement-test.h"
 #include "precision-aim-test.h"
+#include "airborne-opening-test.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
  int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
@@ -61,7 +63,7 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  if(isLocal&&getenv("GE32_DROP_TEST")){x=0;y=0;}
  if(isLocal){padTestBefore(&x,&y,&buttons);templeStressBefore(&x,&y,&buttons);}
  if(isLocal){combatTestBefore(&buttons);dropTestBefore(&buttons);}
- if(isLocal){movementTestBefore(&x,&y,&buttons);precisionAimTestBefore(&x,&y,&buttons);}
+ if(isLocal){openingBefore(&x,&y,&buttons);movementTestBefore(&x,&y,&buttons);precisionAimTestBefore(&x,&y,&buttons);}
  unsigned short rawButtons=buttons;
  if(isLocal){healthBegin();if(getenv("GE32_HEALTH_TEST"))x=y=0;healthTestBefore(&buttons);}
  if(isLocal){grenadeLoadout();grenadeTestBefore(&x,&y,&buttons);}
@@ -227,6 +229,7 @@ static void swapHook(void*w){
  wheelUpdate(lb,back,x,y);
  if(useProgram&&activeTexture){drawPad(w);drawHealth(w);if(openWheel)draw(w);}
  healthTestRender(w);
+ if(InterlockedExchange(&openingCapture,0))padTestCapture(w,"airborne-opening.bmp");
  if(getenv("GE32_MOVEMENT_VISUAL_TEST")&&InterlockedExchange(&movementCapture,0))padTestCapture(w,"movement-slide.bmp");
  if(getenv("GE32_TEMPLE_VISUAL_TEST")&&InterlockedExchange(&templeFrameCapture,0))padTestCapture(w,"temple-camera-transition.bmp");
  swapWindow(w);
@@ -257,11 +260,12 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
   int j=installJumpHook();
   int d=installDropHook();
   int p=installPadGunHook();
+  int portal=installPortalHook();
   int h=installHealthHook();
   int a=replaceImport("SDL_GameControllerGetButton",buttonHook,(void**)&getButton);
   int b=replaceImport("SDL_GameControllerGetAxis",axisHook,(void**)&getAxis);
   int c=replaceImport("SDL_GL_SwapWindow",swapHook,(void**)&swapWindow);
-  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d\n",g,j,d,p,h,a,b,c);fflush(logfile);}
+  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d portal=%d\n",g,j,d,p,h,a,b,c,portal);fflush(logfile);}
  }
  return TRUE;
 }

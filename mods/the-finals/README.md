@@ -53,7 +53,9 @@ The wheel does not pause gameplay. Fire and look input are suppressed while sele
 - combat.h: run-speed calibration, diagonal normalization, sprint ramp, input edges, temporary slapper state, ammunition-safe gun restoration.
 - combat-test.h: offline sprint/slap integration checks.
 - jump.h: grounded takeoff, native vertical integration, ceiling checks, input/physics tests.
-- jump-pad.h: carried gadget, floor validation, native launch, upper-floor traversal, input edges and render snapshot.
+- jump-pad.h: carried gadget, floor validation, native launch, airborne traversal/sill support, input edges and render snapshot.
+- airborne-navigation.h: signature-checked, local-only native floor-plan corrections for verified airborne passages.
+- airborne-opening-test.h: Temple window clearances, crossings, returns, sill pause/resume/retreat and blocked approaches.
 - jump-pad-render.h: procedural pad, hologram preview and carried equipment visual.
 - jump-pad-test.h: native Temple equipment-to-upper-floor acceptance tests.
 - health-bars.h: confirmed native-hit observer, true health/armor reads, target lifecycle and locked render snapshots.
@@ -188,3 +190,13 @@ With the installed centred-aim controller profile, zoomed look uses full 16-bit 
 Input callbacks publish samples under a lock and suppress only the centred ADS look axes; native integer-filter tails are cleared on the input path so they cannot add a second turn. Only the local gameplay thread writes camera angles. Menus, death, player/life mismatch, stale samples and the equipment wheel reset the filter. Ordinary hip-fire look, the N64 aim mode, movement and LT/RT bindings keep their existing paths. The supported GE32 release and installed controller profile remain required.
 
 Offline checks: GE32_STAND_TEST=1 includes response precision, jitter, deadzone, FOV/inversion and 30/60/144 Hz mathematical checks. GE32_AIM_TEST=1 with GE32_REGRESSION_PRACTICE=1 runs 1,440 native-camera ticks covering fine ramps, jitter, release, diagonal look, foreign context, wheel/stale input, native-look suppression and hip/legacy passthrough. These flags inject test input and exit; keep them unset for normal play. Real-controller feel and cross-PC behavior still require playtesting.
+
+## Airborne room openings
+
+Pad flight can pass through a real opening into a room whose navigation floor is the same height or lower. The previous higher-destination-only restriction blocked Temple's raised wall opening. Every candidate movement still requires the full 3D body sweep, including the frame, surrounding walls, actors and dynamic props. Movement remains the native per-frame offset; it does not teleport across the wall.
+
+A thick window can contain no floor-plan tile. While physically inside a verified passage, the extension uses an existing reachable floor tile up to 640 units ahead as a temporary navigation anchor. The candidate point must have actual background support below it; the distant anchor never supplies a phantom floor. Actual sill geometry supports the feet if the player stops or retreats. The bridge ends at a stable native-floor landing.
+
+Two supported-release navigation checks are narrowly scoped: the post-move 2D edge correction is omitted only for the exact local pad-flight point already accepted by the 3D sweep, and the out-of-bounds recovery check accepts the temporary anchor only at that verified bridge position. Ordinary navigation and other players retain their native behavior. Signature failure disables the new bridge admission.
+
+Offline acceptance: GE32_OPENING_TEST=1 with GE32_REGRESSION_PRACTICE=1 launches Temple and exits after static aperture checks and eight routes: crossing both ways, stopping/resuming on the sill, retreat, solid wall, jamb grazing, a low approach and the reported near-jamb approach. GE32_OPENING_BASELINE=1 reproduces the old barrier for comparison. Tests supply pad fixtures, reposition the test player and write an ignored renderer readback. Leave all flags unset for normal play. Cross-PC traversal and every opening/map remain unverified.
