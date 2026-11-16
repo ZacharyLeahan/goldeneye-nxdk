@@ -60,6 +60,9 @@ static int templePhysicalClear(JumpVec before,JumpVec now,float head){
 }
 static void templeStressAfter(void){
  if(!getenv("GE32_TEMPLE_STRESS")||!templeReady)return;
+ /* Before does not advance a route while gameplay is unavailable. Do not
+  * append repeated paused/dead/menu samples to a finite replay buffer. */
+ static ULONGLONG blockedSince;if(!jumpAllowed()){if(!blockedSince)blockedSince=GetTickCount64();if(GetTickCount64()-blockedSince>3000){if(logfile){fprintf(logfile,"Temple unavailable: dead=%d hp=%.3f control=%d pause=%d menu=%d camera=%d\n",PI(256),PF(260),PI(512),PI(588),PI(13948),*(int*)(base+0x303000+65816));fflush(logfile);}templeCheck(0,"gameplay unavailable during route");}return;}blockedSince=0;
  float high=NAN;void*t=floorBelow(PF(1864),PF(140)+2,PF(1872),&high);void*actual=PP(1856);float tileY=actual?FN(float(*)(void*,float,float),0x1000+879136)(actual,PF(1864),PF(1872)):NAN;
  templeCheck(isfinite(PF(140))&&isfinite(PF(1864))&&isfinite(PF(1872))&&PF(140)>-1200&&t,"finite position above a real floor");
  int room=actual?FN(int(*)(void*),0x1000+883888)(actual):-1,highRoom=t?FN(int(*)(void*),0x1000+883888)(t):-1;

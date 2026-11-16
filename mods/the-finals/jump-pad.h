@@ -6,6 +6,7 @@ static volatile LONG padCarrying,padPlaceRequest,padTriggerBlock,padCancelReques
 static int padRTHeld,portalClampInstalled,portalClampSkips;
 static struct {void*owner;int timer;JumpVec position;} portalStep;
 static struct {void*owner;int stage,timer,placed,valid,flight,airPortal,portalBridge,launches,deploys;float cooldown,pulse,lastContactDistance;JumpVec position,preview;void*tile;} gadget;
+static int padAirborne(void){return gadget.flight;}
 typedef struct {int carrying,valid,placed,visible,previewVisible;float face[24][3],ghost[24][3],pulse,carryBlend;} PadSnapshot;
 static PadSnapshot padPublished;
 static float padCarryBlend;

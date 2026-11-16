@@ -197,3 +197,15 @@ Final static checks passed for a full-body aperture, blocked lower wall, blocked
 The broader 76-route Temple deferred audit passed during development: 7,848 traversal samples, zero escaped-floor failures and zero detected solid-geometry crossings. This includes original central-gap walking/crouch/jumps, twelve slide approaches and eight pad directions. Final opening tests also passed after replacing anchor-derived support with actual background support only. Cross-PC behavior, every map/opening and arbitrary moving-world geometry are not exhaustively verified. ROM data, captures and probe tables remain local and ignored.
 
 The final DLL also passed existing pad equipment/RT placement, ammunition preservation, native upper-floor landing, reuse, invalid placement, cancellation/reselect, real-ceiling stopping and owner-reset regression. Strict -Wall -Wextra -Werror compilation passed.
+
+## Grounded escape after a blocked pad flight
+
+The user's previous session log lacked the portal hook marker, confirming an older extension was still loaded. Separately, an actual post-landing deadlock was reproduced on the current opening build: after a blocked jump at x=592.71, traversal remained active and forty frames of backward input produced no escape. The earlier window suite stopped at landing and did not cover this action.
+
+The cause was the 31-unit conservative traversal footprint at a native 30-unit wall contact. Grounded cleanup now verifies a real containing floor tile and classifies every unsupported toe sample: static wall obstruction may release traversal, whereas a real open ledge must retain it. The check uses background geometry rather than actor/temporary-prop bounds. Native collision then handles the next ground step.
+
+Four native regression cases passed: solid-wall and reported jamb-side blocked jumps, each with the pad removed or retained at contact. Each backed away approximately 262–264 units over forty input frames, including the retained-pad cases that immediately rebounced. No health override or damage was added. The log now names the revision to make loaded-build verification explicit.
+
+The ledge/slide cases 0–67 completed with the new grounded guard. The long session then became gameplay-unavailable during the first pad route; the recorder had continued appending repeated samples while its input-side tick was paused. Its after-step guard now matches the input guard and reports unavailable gameplay explicitly. The final eight pad routes passed in a fresh session: eight upper-floor landings, zero escapes and zero physical failures. The 76 distinct routes are therefore covered across the two sessions rather than claimed as a single uninterrupted pass.
+
+The final DLL also passed all eight high-opening routes and static clearance/sill checks after the grounded cleanup change. Strict -Wall -Wextra -Werror compilation passed.
