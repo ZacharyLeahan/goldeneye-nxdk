@@ -257,3 +257,13 @@ These checks sample routes in every setup; they do not constitute complete missi
 Final focused regressions also passed wheel neutrality/B cancellation, 20 alternating switches, 100 rapid reopen/cancels and foreign-player isolation; six native melee cases including dual magazines and sniper palm return; original pad equipment, upper-floor landing, reuse, invalid placement/cancel, real-ceiling stopping and owner reset at normal health; and all eight high-opening routes. Temple's long 76-route regression was partitioned after the external runner watchdog stopped it: routes 0–58 completed their deferred audits before route 59 began, then routes 59–75 passed in a separate run with zero escapes and physical failures. The interruption was a test-runner time limit, not a recorded gameplay failure.
 
 The final exact binary also passed all four post-landing wall-escape cases, all three combat lifecycle cases, and eight radial routes at each of the original Caves and Silo failing anchors. The coverage audit found no missing core phase or radial route in any of the forty setup records.
+
+## Character selection portrait clipping
+
+The native portrait plane is tilted, but its orthographic near/far range was only 1..10. This clipped the upper panel completely and left chest-only strips in lower panels. The extension widens depth to -64..64 at the signature-checked portrait projection call only; layout, UVs, scrolling, scissoring and gameplay projections remain native.
+
+Thirty isolated native menu runs passed: 2, 3 and 4 local players at 640x480, 960x540, 1920x1080, 2560x1440 and 3440x1440, each with safe-area cropping off/on. Every run scrolled all 64 fixture-unlocked roster entries and checked full portrait border heights, first/last boundaries, analog/D-pad navigation, A enlargement, B before/after selection, independent player selection/cancellation, duplicate rejection and persisted choices after all-ready. Production roster unlocks are unchanged. An additional four-player run passed with physical input isolated and visual captures of the return screens.
+
+The negative control GE32_PORTRAIT_BASELINE=1 reproduces the old rendering and fails the head/border visibility check. Framebuffer captures were visually reviewed. These are local menu fixtures, not cross-PC lobby tests.
+
+GE32_CHARACTER_TEST=1 enables the native fixture in a separate prepared runtime; GE32_CHARACTER_PLAYERS=2..4 selects its layout and GE32_CHARACTER_VISUAL=1 saves ignored framebuffer captures. It replaces native input getters and masks external input only in the opted-in process, then exits on success/failure. Keep test flags unset in normal play. Startup revision: character-portraits-v5.

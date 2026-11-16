@@ -227,3 +227,5 @@ Grounded traversal now recognizes a continuous native navigation surface under i
 Melee and sprint context now resets on stage change and timer rewind as well as player allocation change. GE32_COMBAT_LIFECYCLE_TEST=1 with GE32_REGRESSION_PRACTICE=1 validates these cases in the native tick using a temporary stage/timer fixture. This prevents stale saved melee state from restoring a previous level's weapon/ammo state when the allocation is reused. The startup revision is map-sweep-slopes-v4.
 
 The sweep covers selected floor fixtures and routes in each setup, not every room, objective, weapon combination or network session. See VALIDATION.md for the coverage matrix and fixture limitations.
+
+Character selection portraits now retain their full height in every local player panel. The fix widens only the portrait projection depth range; it preserves the original folder layout and animation. See VALIDATION.md for the 30-case layout and selection regression matrix.
