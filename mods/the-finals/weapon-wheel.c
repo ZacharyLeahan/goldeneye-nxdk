@@ -60,6 +60,8 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "wall-escape-test.h"
 #include "level-sweep-test.h"
 #include "combat-lifecycle-test.h"
+#include "character-menu-test.h"
+#include "portrait-projection.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
  int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
@@ -116,7 +118,7 @@ static const char*itemName(int id){return id==PAD_ITEM?"Jump Pad":id>=0&&id<=GRE
 #include "wheel-layout.h"
 static void inventory(void){InventorySnapshot s=snapshotRead();count=s.count;memcpy(ids,s.ids,sizeof(ids));}
 static unsigned char buttonHook(void *p,int b){
- if(getenv("GE32_LEVEL_SWEEP"))return 0;
+ if(getenv("GE32_LEVEL_SWEEP")||getenv("GE32_CHARACTER_TEST"))return 0;
  if(!pad)pad=p;
  if(p==pad && playing()){
   if(b==7||b==8)return combatButton(b,getButton(p,b),snapshotRead().allowJump&&!openWheel&&!FN(int(*)(void),0x1000+1453264)());
@@ -243,6 +245,7 @@ static void swapHook(void*w){
  if(InterlockedExchange(&openingCapture,0))padTestCapture(w,"airborne-opening.bmp");
  if(getenv("GE32_MOVEMENT_VISUAL_TEST")&&InterlockedExchange(&movementCapture,0))padTestCapture(w,"movement-slide.bmp");
  if(getenv("GE32_TEMPLE_VISUAL_TEST")&&InterlockedExchange(&templeFrameCapture,0))padTestCapture(w,"temple-camera-transition.bmp");
+ characterTestRender(w);
  swapWindow(w);
 }
 static int replaceImport(const char*name,void*replacement,void**old){
@@ -272,11 +275,13 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
   int d=installDropHook();
   int p=installPadGunHook();
   int portal=installPortalHook();
+  int portrait=installPortraitProjection();
+  if(getenv("GE32_CHARACTER_TEST")&&!installCharacterTest()){fprintf(logfile,"FAIL character test hooks unsupported\n");fflush(logfile);ExitProcess(2);}
   int h=installHealthHook();
   int a=replaceImport("SDL_GameControllerGetButton",buttonHook,(void**)&getButton);
   int b=replaceImport("SDL_GameControllerGetAxis",axisHook,(void**)&getAxis);
   int c=replaceImport("SDL_GL_SwapWindow",swapHook,(void**)&swapWindow);
-  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d portal=%d revision=map-sweep-slopes-v4\n",g,j,d,p,h,a,b,c,portal);fflush(logfile);}
+  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d portal=%d portrait=%d revision=character-portraits-v5\n",g,j,d,p,h,a,b,c,portal,portrait);fflush(logfile);}
  }
  return TRUE;
 }
