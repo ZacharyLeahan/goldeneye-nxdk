@@ -72,22 +72,28 @@ static float traversalFloorSupport(int*uniform){
  for(int i=0;i<17;i++){float ox=0,oz=0;if(i){float angle=(i-1)*.3926990817f;ox=31*cosf(angle);oz=31*sinf(angle);}float y;void*t=floorBelow(PF(1864)+ox,PF(140)+1,PF(1872)+oz,&y);if(t&&isfinite(y)){support=fmaxf(support,y);lowest=fminf(lowest,y);present++;}}
  *uniform=present==17&&support-lowest<3;return support;
 }
-/* Native wall clearance is 30 units; the conservative traversal sweep is 31.
- * A grounded body touching a wall must return to native collision instead of
- * treating that extra one-unit overlap as an airborne obstruction forever. */
+/* Hand grounded support back to native navigation, including connected slopes.
+ * Distinct floor layers across an opening must not become slope support.
+ * Wall-blocked toes reconcile native 30-unit and traversal 31-unit clearance. */
 static void*dropGroundedAnchor(void){
  if(jumpActive||padAirborne()||fabsf(PF(152))>.6f)return NULL;
- float foot=PF(140),floor;void*tile=floorBelow(PF(1864),foot+1,PF(1872),&floor);if(!tile||!isfinite(floor)||fabsf(foot-floor)>1.5f||!FN(int(*)(void*,float,float),0xd5e10)(tile,PF(1864),PF(1872)))return NULL;
+ float foot=PF(140),floor;void*tile=floorBelow(PF(1864),foot+1,PF(1872),&floor);if(!tile||!isfinite(floor)||foot<floor-1.5f||!FN(int(*)(void*,float,float),0xd5e10)(tile,PF(1864),PF(1872)))return NULL;
  if(!collisionPrepareBox((JumpVec){PF(1864)-31,foot+8,PF(1872)-31},(JumpVec){PF(1864)+31,foot+8,PF(1872)+31}))return NULL;
  float scale=*(float*)(base+0x228000+4252);int total=*(int*)(base+0x228000+4208);if(!isfinite(scale)||scale<=0||total<1||total>2048)return NULL;
- for(int point=0;point<16;point++){float a=point*.3926990817f,dx=31*cosf(a),dz=31*sinf(a),h;void*t=floorBelow(PF(1864)+dx,foot+1,PF(1872)+dz,&h);if(t&&isfinite(h)&&fabsf(h-foot)<3)continue;
+ float highest=floor;
+ for(int point=0;point<16;point++){float a=point*.3926990817f,dx=31*cosf(a),dz=31*sinf(a),h;void*t=floorBelow(PF(1864)+dx,foot+1,PF(1872)+dz,&h);
+  if(t&&isfinite(h)){void*edge=tile;int connected=FN(int(*)(void**,float,float,float,float),0xd6870)(&edge,PF(1864),PF(1872),PF(1864)+dx,PF(1872)+dz);float nativeY=connected&&edge?FN(float(*)(void*,float,float),0x1000+879136)(edge,PF(1864)+dx,PF(1872)+dz):NAN;
+   if(connected&&isfinite(nativeY)&&fabsf(nativeY-h)<3){highest=fmaxf(highest,h);continue;}
+  }
   /* Unsupported toes are acceptable only where a real static wall prevents
    * the native body from going; open ledges retain the traversal context. */
   JumpVec from={PF(1864),foot+8,PF(1872)},to={from.x+dx,from.y,from.z+dz};int wall=0;
   for(int room=1;room<total;room++){if(!*(void**)(base+0x303000+27264+room*0x68+0x40))continue;JumpHit hit={0};if(FN(int(*)(JumpVec*,JumpVec*,int,JumpHit*),0x1000+13744)(&from,&to,room,&hit)){float u=((hit.position.x/scale-from.x)*dx+(hit.position.z/scale-from.z)*dz)/(31*31);if(u>.001f&&u<1.001f){wall=1;break;}}}
   if(!wall)return NULL;
  }
- return tile;
+ /* Sloped support may hold the feet at the uphill toe until this handoff.
+  * Never release a body still suspended above all connected support. */
+ if(foot>highest+1.5f)return NULL;return tile;
 }
 static int dropTryStan(JumpVec*to,void**tile){
  /* Backing out of an opening can leave a lower STAN tile under feet that
@@ -131,6 +137,7 @@ static void dropPrepareVertical(int*useHeight,float*offset){
  if(!drop.active&&jumpActive&&jumpAllowed()){drop.active=1;drop.originFloor=jumpOriginFloor;drop.falling=0;}
  if(!drop.active)return;
  if(!jumpAllowed()){drop.active=0;return;}
+ void*grounded=dropGroundedAnchor();if(grounded){PP(1856)=grounded;drop.active=drop.falling=0;drop.lands++;return;}
  int backOnOrigin;float support=traversalFloorSupport(&backOnOrigin);
  if(backOnOrigin&&fabsf(PF(140)-support)<1.5f&&fabsf(PF(152))<.6f){float h;void*t=floorBelow(PF(1864),PF(140)+1,PF(1872),&h);if(t&&fabsf(h-support)<3)PP(1856)=t;drop.active=drop.falling=0;return;}
  if(!isfinite(support)){drop.active=0;return;}

@@ -7,7 +7,7 @@ static int combatButtonHeld[2],sprintLatched,sprintOn;
 #define MOVE_RUN_SCALE 1.15f
 #define MOVE_SPRINT_RATIO 1.46f /* native gait is nonlinear; calibrated in-engine */
 static float sprintBlend;
-static void*combatPlayer;
+static void*combatPlayer;static int combatStage,combatTimer;
 static struct {
  int phase,saved[2],clip[2],previous[2],priorName,seenStrike,deferredWeapon,slaps,events;
  float elapsed,cooldown;
@@ -45,7 +45,9 @@ static void beginSlap(void){
  if(logfile){fprintf(logfile,"slap begin previous=%d/%d clips=%d/%d\n",slap.saved[0],slap.saved[1],slap.clip[0],slap.clip[1]);fflush(logfile);}
 }
 static void combatBefore(unsigned short *buttons,unsigned short *oldbuttons){
- if(combatPlayer!=CURRENT){combatPlayer=CURRENT;sprintLatched=sprintOn=0;sprintBlend=0;slap.phase=0;slap.cooldown=0;InterlockedExchange(&sprintClicks,0);InterlockedExchange(&slapRequests,0);}
+ int stage=*(int*)(base+0x303000+211452),timer=*(int*)(base+0x303000+211432);
+ if(combatPlayer!=CURRENT||combatStage!=stage||timer<combatTimer){combatPlayer=CURRENT;combatStage=stage;sprintLatched=sprintOn=0;sprintBlend=0;slap.phase=0;slap.cooldown=slap.elapsed=0;slap.deferredWeapon=-1;InterlockedExchange(&sprintClicks,0);InterlockedExchange(&slapRequests,0);}
+ combatTimer=timer;
  float dt=*(float*)(base+0x303000+211436);if(!isfinite(dt)||dt<0)dt=0;
  slap.cooldown=fmaxf(0,slap.cooldown-dt);
  int allowed=jumpAllowed(),request=InterlockedExchange(&slapRequests,0),clicks=InterlockedExchange(&sprintClicks,0);
