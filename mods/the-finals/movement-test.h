@@ -17,7 +17,7 @@ static void movementTestBefore(signed char*x,signed char*y,unsigned short*button
  if(getenv("GE32_MOVEMENT_VISUAL_TEST")&&movementCase==3&&t==155)InterlockedExchange(&movementCapture,1);
  if(t==140){movementLastX=PF(1864);movementLastZ=PF(1872);}
  if(t>140&&t<=150&&movementCase<3){movementDistance+=hypotf(PF(1864)-movementLastX,PF(1872)-movementLastZ);movementTime+=*(float*)(base+0x303000+211436);movementLastX=PF(1864);movementLastZ=PF(1872);}
- if(t==151&&movementCase<3){float speed=movementDistance*60/movementTime/100;fprintf(logfile,"MEASURE movement case=%d speed=%.3f m/s (100 units/m)\n",movementCase,speed);fflush(logfile);movementCheck(speed>4.0f&&speed<(movementCase==1?6.8f:5.2f),"measured speed bounded");if(movementCase==1)movementCheck(speed>6.0f,"sprint reaches target pace");}
+ if(t==151&&movementCase<3){float speed=movementDistance*60/movementTime/100;fprintf(logfile,"MEASURE movement case=%d speed=%.3f m/s (100 units/m)\n",movementCase,speed);fflush(logfile);movementCheck(speed>4.0f&&speed<(movementCase==1?7.8f:5.8f),"measured speed bounded");if(movementCase==1)movementCheck(speed>6.5f,"sprint reaches target pace");}
  if(movementCase==8&&t==162){PI(184)=2;InterlockedExchange(&slideRequests,1);}
  if(movementCase==9&&t==162){int dead=PI(256);PI(256)=1;slideBefore();PI(256)=dead;movementCheck(!slide.active,"death clears active slide");}
  if(movementCase==10&&t==140)InterlockedExchange(&pendingJump,1);

@@ -55,6 +55,7 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "grenades-test.h"
 #include "movement-test.h"
 #include "precision-aim-test.h"
+#include "ads-movement-test.h"
 #include "airborne-opening-test.h"
 #include "wall-escape-test.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
@@ -68,8 +69,11 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  unsigned short rawButtons=buttons;
  if(isLocal){healthBegin();if(getenv("GE32_HEALTH_TEST"))x=y=0;healthTestBefore(&buttons);}
  if(isLocal){grenadeLoadout();grenadeTestBefore(&x,&y,&buttons);}
+ if(isLocal)adsMovementBefore(&x,&y,&buttons);
  if(isLocal){padBefore(&buttons,&oldbuttons);combatBefore(&buttons,&oldbuttons);slideBefore();}
+ int aimMove=isLocal&&aimMoveReady(buttons),stance=0,autoStance=0;float aimPushForward=0,aimPushSide=0;if(aimMove){aimPushForward=-PF(432)*PF(392)+PF(440)*PF(388);aimPushSide=-PF(432)*PF(388)-PF(440)*PF(392);stance=PI(184);autoStance=PI(14004);buttons&=~15;oldbuttons&=~15;}
  originalTick(x,y,buttons,oldbuttons);
+ if(aimMove&&PI(332)){PI(184)=stance;PI(14004)=autoStance;aimMoveAfter();PF(424)+=aimPushForward;PF(416)+=aimPushSide;}
  if(isLocal&&getenv("GE32_GRENADE_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(grenadeTestFire);
  if(isLocal&&getenv("GE32_HEALTH_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(healthTestFire);
  if(isLocal){combatAfter(rawButtons);slideAfter();precisionAimTestFeed();precisionAimTick();precisionAimTestAfter();combatTestAfter(rawButtons);dropTestAfter();padTestAfter();templeStressAfter();}
@@ -266,7 +270,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
   int a=replaceImport("SDL_GameControllerGetButton",buttonHook,(void**)&getButton);
   int b=replaceImport("SDL_GameControllerGetAxis",axisHook,(void**)&getAxis);
   int c=replaceImport("SDL_GL_SwapWindow",swapHook,(void**)&swapWindow);
-  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d portal=%d revision=ground-wall-escape-v2\n",g,j,d,p,h,a,b,c,portal);fflush(logfile);}
+  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d portal=%d revision=finals-motion-v3\n",g,j,d,p,h,a,b,c,portal);fflush(logfile);}
  }
  return TRUE;
 }
