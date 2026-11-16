@@ -56,6 +56,7 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "movement-test.h"
 #include "precision-aim-test.h"
 #include "airborne-opening-test.h"
+#include "wall-escape-test.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
  int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
@@ -63,7 +64,7 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  if(isLocal&&getenv("GE32_DROP_TEST")){x=0;y=0;}
  if(isLocal){padTestBefore(&x,&y,&buttons);templeStressBefore(&x,&y,&buttons);}
  if(isLocal){combatTestBefore(&buttons);dropTestBefore(&buttons);}
- if(isLocal){openingBefore(&x,&y,&buttons);movementTestBefore(&x,&y,&buttons);precisionAimTestBefore(&x,&y,&buttons);}
+ if(isLocal){wallEscapeBefore(&x,&y,&buttons);openingBefore(&x,&y,&buttons);movementTestBefore(&x,&y,&buttons);precisionAimTestBefore(&x,&y,&buttons);}
  unsigned short rawButtons=buttons;
  if(isLocal){healthBegin();if(getenv("GE32_HEALTH_TEST"))x=y=0;healthTestBefore(&buttons);}
  if(isLocal){grenadeLoadout();grenadeTestBefore(&x,&y,&buttons);}
@@ -265,7 +266,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
   int a=replaceImport("SDL_GameControllerGetButton",buttonHook,(void**)&getButton);
   int b=replaceImport("SDL_GameControllerGetAxis",axisHook,(void**)&getAxis);
   int c=replaceImport("SDL_GL_SwapWindow",swapHook,(void**)&swapWindow);
-  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d portal=%d\n",g,j,d,p,h,a,b,c,portal);fflush(logfile);}
+  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d portal=%d revision=ground-wall-escape-v2\n",g,j,d,p,h,a,b,c,portal);fflush(logfile);}
  }
  return TRUE;
 }

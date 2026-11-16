@@ -55,6 +55,7 @@ The wheel does not pause gameplay. Fire and look input are suppressed while sele
 - jump.h: grounded takeoff, native vertical integration, ceiling checks, input/physics tests.
 - jump-pad.h: carried gadget, floor validation, native launch, airborne traversal/sill support, input edges and render snapshot.
 - airborne-navigation.h: signature-checked, local-only native floor-plan corrections for verified airborne passages.
+- wall-escape-test.h: blocked pad-jump landing and backward escape, including retained-pad rebounces.
 - airborne-opening-test.h: Temple window clearances, crossings, returns, sill pause/resume/retreat and blocked approaches.
 - jump-pad-render.h: procedural pad, hologram preview and carried equipment visual.
 - jump-pad-test.h: native Temple equipment-to-upper-floor acceptance tests.
@@ -200,3 +201,9 @@ A thick window can contain no floor-plan tile. While physically inside a verifie
 Two supported-release navigation checks are narrowly scoped: the post-move 2D edge correction is omitted only for the exact local pad-flight point already accepted by the 3D sweep, and the out-of-bounds recovery check accepts the temporary anchor only at that verified bridge position. Ordinary navigation and other players retain their native behavior. Signature failure disables the new bridge admission.
 
 Offline acceptance: GE32_OPENING_TEST=1 with GE32_REGRESSION_PRACTICE=1 launches Temple and exits after static aperture checks and eight routes: crossing both ways, stopping/resuming on the sill, retreat, solid wall, jamb grazing, a low approach and the reported near-jamb approach. GE32_OPENING_BASELINE=1 reproduces the old barrier for comparison. Tests supply pad fixtures, reposition the test player and write an ignored renderer readback. Leave all flags unset for normal play. Cross-PC traversal and every opening/map remain unverified.
+
+## Walking away after a blocked pad jump
+
+Grounded traversal now returns to native collision when the center is on a valid floor and any unsupported toe samples are blocked by actual static wall geometry. This reconciles the extension's conservative 31-unit sweep with GoldenEye's 30-unit wall clearance. Previously, landing against a wall could leave airborne traversal active and reject the first backward step. Real open ledges retain their traversal context; actors and temporary props cannot substitute for static support in this decision.
+
+GE32_WALL_ESCAPE_TEST=1 with GE32_REGRESSION_PRACTICE=1 runs four offline regressions: solid wall and reported jamb-side approaches, each with the pad removed or retained under the landing. It verifies backward escape after landing, finite grounded movement/health and escape even when the retained pad bounces again. Normal launches must leave the flags unset. The startup log includes revision=ground-wall-escape-v2 so an older still-running DLL can be distinguished from the installed one.
