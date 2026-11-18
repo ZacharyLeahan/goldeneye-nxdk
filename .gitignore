@@ -212,3 +212,7 @@ docs/media/*.mp4
 # Local multiplayer runtime and downloaded release bundles.
 /GE32/
 /GE32*.zip
+
+# Local original Xbox build and user-supplied ROM archives
+/build-xbox/
+/GoldenEye*.zip

@@ -1,6 +1,6 @@
 # GoldenEye PC Port — The Finals-inspired controls
 
-This downstream fork keeps the upstream PC-port source and adds the local GE32 extension in [mods/the-finals](mods/the-finals/README.md).
+This downstream fork keeps the upstream PC-port source and adds the local GE32 extension in [mods/the-finals](mods/the-finals/README.md). The [original Xbox build](#original-xbox) uses the same source checkout.
 
 The playable multiplayer build used here is GE32 2026.11.07 e8859fe9 for Windows, a separate unofficial fan fork of the base PC port. Its multiplayer source is not included in this checkout. The additions are a native Windows extension and reversible executable patches for that exact GE32 release; they are not integrated into the upstream port build.
 
@@ -26,3 +26,59 @@ Movement and combat additions have local offline coverage; cross-PC synchronizat
 See the [extension setup and validation](mods/the-finals/README.md). The original [upstream README](README.md) remains the base-port documentation.
 
 No ROMs, extracted game assets, save files, GE32 binaries, patched executables, DLLs, or compiler distributions are included. Bring your own supported US ROM and obtain GE32 separately from its author. This fork is unofficial and not affiliated with Embark Studios or THE FINALS.
+
+## Original Xbox
+
+The downstream nxdk target lives in `port/xbox/`. It compiles the GoldenEye
+title code, matrix routines and software RSP directly from this checkout.
+The NV2A renderer comes from Perfect Dark X. The current XBE loops the textured
+Rareware logo from a US cartridge dump. Menus, missions, input and audio still
+need integration. The GE32 Windows extension uses a separate binary interface.
+
+### Build and boot
+
+Use Python 3, CMake 3.20 or later, and a recursive nxdk checkout.
+Set `NXDK_DIR` to its absolute path and activate nxdk. The SDK path needs to
+be free of spaces for its compiler wrappers. Put matching LLVM `clang`,
+`opt`, `llvm-ar` and `lld-link` on PATH. The tested nxdk revision is
+`14d5ee97e73347c973f1f57b68b79ec08c9e77f2`.
+
+From an activated SDK shell, build the SDK libraries and host tools once, then
+run the following from the GoldenEye checkout.
+
+```sh
+make -C "$NXDK_DIR" NXDK_ONLY=y all cxbe extract-xiso
+python3 port/xbox/build.py
+```
+
+This produces `build-xbox/default.xbe`. To boot it from a game folder, put
+the XBE beside your ROM named `ge007.ntsc-final.z64`. To build a private
+disc image for xemu, pass your big-endian US ROM or its ZIP.
+
+```sh
+python3 port/xbox/build.py --rom "GoldenEye 007.zip"
+```
+
+The packager checks the dump against the repository's `ge007.u.sha1` and
+writes `build-xbox/ge007.iso`. Load the image as the DVD in a 64 MiB xemu
+profile and reset the guest. A successful boot shows the rotating Rareware
+logo, its lettering and the fade before the animation repeats. The XISO
+contains your cartridge dump and belongs in local build output.
+
+### Bring Windows upstream changes into the fork
+
+Keep `origin` pointed at this fork. In a fresh clone, add the Windows project
+once with `git remote add upstream https://github.com/jkdansereau/goldeneye-pc-port.git`.
+With your downstream work committed on `main`, bring in new commits with the following commands.
+
+```sh
+git fetch upstream main
+git log --oneline HEAD..upstream/main
+git merge upstream/main
+```
+
+Run the existing Windows build in its MSYS2 environment and the Xbox build
+in its nxdk environment after merging. The desktop and cartridge builds have
+their own existing entry points. Keep console adaptations in `port/xbox/` and
+compile shared files in place. When an upstream interface changes, build the
+Xbox target against its new header and adapt the console caller there.
