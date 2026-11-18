@@ -30,12 +30,15 @@ static void padHeldFace(float out[24][3],float vw,float vh,float blend){
  for(int i=0;i<8;i++){float a=6.28318530718f*(i+.5f)/8,x=cosf(a),y=sinf(a);out[i][0]=(cx+128*x+36*y)/vw;out[i][1]=(cy+62*y-18*x)/vh;out[i][2]=1+.13f*y;out[i+8][0]=(cx+124*x+35*y)/vw;out[i+8][1]=(cy+62*y-18*x+19)/vh;out[i+8][2]=out[i][2];out[i+16][0]=(cx+92*x+26*y)/vw;out[i+16][1]=(cy+45*y-13*x-6)/vh;out[i+16][2]=out[i][2];}
 }
 static void drawPad(void*w){
- if(!playing())return;PadSnapshot s=padSnapshot();if(!s.carrying&&!s.visible&&s.carryBlend<=0)return;
+ static int debug,wasDown;int down=(GetAsyncKeyState(VK_F8)&0x8000)!=0;if(down&&!wasDown){debug=!debug;InterlockedExchange(&mantleDebugEnabled,debug);}wasDown=down;
+ if(!playing())return;PadSnapshot s=padSnapshot();if(!debug&&!getenv("GE32_MANTLE_TEST")&&!s.carrying&&!s.visible&&s.carryBlend<=0)return;
  int width,height;getSize(w,&width,&height);if(width<1||height<1)return;
  int prog=0,active=0,mode=0;glGetIntegerv(0x8B8D,&prog);glGetIntegerv(0x84E0,&active);glGetIntegerv(GL_MATRIX_MODE,&mode);useProgram(0);activeTexture(0x84C0);
  glPushAttrib(GL_ALL_ATTRIB_BITS);glViewport(0,0,width,height);glDisable(GL_DEPTH_TEST);glDisable(GL_SCISSOR_TEST);glDisable(GL_CULL_FACE);glDisable(GL_ALPHA_TEST);glDisable(GL_TEXTURE_2D);glDisable(GL_LIGHTING);glDisable(GL_STENCIL_TEST);glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
  uiScale=fminf(width/1280.f,height/720.f);float vw=width/uiScale,vh=height/uiScale;
  glMatrixMode(GL_PROJECTION);glPushMatrix();glLoadIdentity();glOrtho(0,vw,vh,0,-1,1);glMatrixMode(GL_MODELVIEW);glPushMatrix();glLoadIdentity();
+ if(debug||getenv("GE32_MANTLE_TEST")){char line[160];AcquireSRWLockShared(&mantleDebugLock);memcpy(line,mantleDebugLine,sizeof(line));ReleaseSRWLockShared(&mantleDebugLock);
+  glColor4f(.02f,.02f,.02f,.8f);retroQuad(12,12,retroWidth(line,1.8f)+12,24);retroLabel(18,18,line,1.8f,.8f,.95f,.75f,1);}
  if(s.visible)padFace(s.face,vw,vh,0,1,s.pulse);
  if(s.carryBlend>0&&!openWheel){float held[24][3];padHeldFace(held,vw,vh,s.carryBlend);padFace(held,vw,vh,0,1,0);}
  if(s.carrying&&!openWheel){
