@@ -724,6 +724,7 @@ covers D24–D69; the log continues in §H (D32 procedure, D70–D121).
 | D571 | **Project icon restyled to the in-game sight red as pixel art (exe, window, favicon)** — full `## D571` entry at file tail | CHANGED 2026-10-06 (maintainer request; make_icon.py; social preview unchanged) |
 | D572 | **Linux tarball glibc floor lowered from 2.38 to 2.31: CI builds in the Steam Runtime sniper container with SDL2 2.30.0 from source** — full `## D572` entry at file tail | CHANGED 2026-10-07 (maintainer request; packaging only; X220 glibc 2.36 fresh install PASS) |
 | D573 | Downstream nxdk runs the original Rareware sequence with the shared software RSP and a pbkit NV2A renderer. | PARTIAL 2026-11-18 (xemu) |
+| D574 | Xbox split-screen equipment wheels and frame pacing in Complex. | FIXED 2026-11-18 (physical Xbox) |
 | D407 | **Tanks cannot be boarded/exited on PC — the v0.4.0 use/reload split (D378/D393) removed the B-button tap the engine's tank handlers in `bondview2.c` consume (user report 2026-09-28, Runway/Streets)** — full `## D407` entry at file tail | **CLOSED (2026-09-28 bookkeeping: tank board/exit accepted by the user; shipped in v0.4.0).** Earlier: PARTIAL (fix landed in v0.4.0, port-only): present `GE_CONT_B` on the use (E / pad A) rising edge only while `g_PlayerIsInTank == 1` or `g_BondCanEnterTank != 0`; E keeps its D378 no-reload-fallback semantics elsewhere, N64 layout unaffected. D407(b) same cycle: front PC Options page-edge highlight clamp + mouse-wheel / W-S paging (wheel queue consumed on the menu, D223); its wheel mapping shipped inverted and was fixed to match W/S (wheel up = step up). D407(c): board-animation lockout, menu-accept B gate in tank states, in-tank aim routed through the legacy velocity stick + `Input.TankAimScale` knob. RESOLVED 2026-09-28: all port-only (src/game zero-diff), 10 TANKDBG probes stripped, release binary verified clean, user live tank drive signed off (board + exit OK, aim feel good). |
 | D408 | **`Game.SkipIntro` skips the post-mission failure dossier: with it on, entering a level then aborting (watch Z+A) or dying (KIA) returns straight to the menus — no REPORT / "Mission status: KILLED IN ACTION / ABORTED" screen** (user report 2026-09-28; save/AllUnlocked ruled out) — full `## D408` entry at file tail | FIXED 2026-09-30 (SkipIntro hook gated to first boot; live dossier check owed). |
 | D415 | **Shooting a light fixture does not "kill" its flickering light (Bunker, Caverns): the fixture takes the hit but the flicker keeps going (community report, issue #87 comment by the reporter, 2026-09-28, 00 Agent playthrough of v0.4.0).** — full `## D415` entry at file tail | FIXED (2026-09-29 bookkeeping: root-caused and fixed as D430 + D431, user-verified vs GEPD/1964 on Caverns 2026-09-29; #119). Earlier: ROOT-CAUSED as D430 (see there); fix in tree, live check owed. |
@@ -18433,3 +18434,13 @@ Verified in xemu by booting a private XISO and sampling the framebuffer during
 the rotation. The XBE links the upstream title and framebuffer-clear routines
 and the downstream NV2A backend. The platform work and build instructions are
 in [DOWNSTREAM.md](../../DOWNSTREAM.md#original-xbox).
+
+## D574 — Downstream original Xbox split-screen frame pacing (2026-11-18)
+
+The NV2A now blends one cached equipment-wheel texture per player. With both
+wheels open in two-player Complex, the console went from 7.5 to 60.0 FPS.
+The Xbox renderer also acquires a free render target instead of unconditionally
+waiting a vertical blank. It uses Perfect Dark X's pbkit fix to retire a queued
+surface after the display controller selects it. With both players turning,
+the 95th-percentile frame time fell from 33.9 to 20.0 ms. See the
+[physical benchmark](../../DOWNSTREAM.md#xbox-frame-pacing) for the scene timings.

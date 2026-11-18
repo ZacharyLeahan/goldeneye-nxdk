@@ -93,6 +93,26 @@ controls above and jump-pad placement and launch. Mantling, slides, quick
 slap, hit bars, jump-pad visuals, co-op and online play still need native
 Xbox support.
 
+### Xbox frame pacing
+
+The Xbox renderer waits for a free back buffer, and the vertical-blank interrupt
+selects completed frames for display. The build applies Perfect Dark X's pbkit
+queue-retirement fix to a build-directory copy of the configured nxdk source.
+Each split-screen player has a cached equipment-wheel texture. A change in
+selection, ammo, owned items or viewport size refreshes the artwork. The NV2A
+blends it over the current view each frame.
+
+A physical Xbox comparison used NTSC 640×480, two players in Complex, a fixed
+spawn seed and the same scripted inputs on each build. Each measurement covers
+seven seconds after the one-second transition. Frame times include the game
+loop and renderer, sampled at consecutive frame completions.
+
+| Two-player scene | Previous FPS | Updated FPS | Previous 95th-percentile frame time | Updated 95th-percentile frame time |
+| --- | ---: | ---: | ---: | ---: |
+| Both standing still | 58.7 | 60.0 | 18.1 ms | 18.7 ms |
+| Both turning | 50.6 | 57.7 | 33.9 ms | 20.0 ms |
+| Both equipment wheels open | 7.5 | 60.0 | 135.9 ms | 18.3 ms |
+
 ### Bring Windows upstream changes into the fork
 
 Keep `origin` pointed at this fork. In a fresh clone, add the Windows project

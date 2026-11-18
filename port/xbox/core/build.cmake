@@ -7,7 +7,8 @@ foreach(unit IN LISTS adapted_units)
   list(APPEND original_sources "${GE}/src/game/${unit}.c")
   list(APPEND adapted_sources "${generated}/${unit}.c")
 endforeach()
-set(core_inputs "${CMAKE_CURRENT_LIST_DIR}/prepare.py" ${original_sources}
+set(pbkit_source "${SDK}/lib/pbkit/pbkit.c")
+set(core_inputs "${pbkit_source}" "${CMAKE_CURRENT_LIST_DIR}/prepare.py" ${original_sources}
   "${GE}/port/src/romdata.c" "${GE}/port/src/romassets_u.s"
   "${GE}/assets/animationtable_data.h" "${upstream_build}" "${GE}/port/fast3d/gfx_pc.cpp")
 set(finals_dir "${GE}/mods/the-finals")
@@ -16,7 +17,7 @@ foreach(file weapon-wheel.c wheel-layout.h wheel-render.h retro-ui.h precision-a
 endforeach()
 list(APPEND core_inputs "${CMAKE_CURRENT_LIST_DIR}/finals_sources.py")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${core_inputs})
-execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/prepare.py" "${generated}"
+execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/prepare.py" "${generated}" "${pbkit_source}"
   COMMAND_ERROR_IS_FATAL ANY)
 file(READ "${upstream_build}" source_manifest)
 string(REGEX REPLACE "#[^\n]*" "" source_manifest "${source_manifest}")
@@ -65,7 +66,9 @@ add_custom_command(OUTPUT "${world_obj}"
   COMMAND "${LLVM_OPT}" -passes=internalize,globaldce "-internalize-public-api-list=${exports}" "${generated}/all.bc" -o "${generated}/game.bc"
   COMMAND "${CMAKE_C_COMPILER}" -O2 -c "${generated}/game.bc" -o "${world_obj}"
   DEPENDS world_ir $<TARGET_OBJECTS:world_ir> COMMAND_EXPAND_LISTS VERBATIM)
-add_executable(world main.cpp core/settings.c controllers.c finals_controls.cpp "${generated}/cart_symbols.c"
+add_library(xbox_present OBJECT "${generated}/pbkit_present.c")
+target_include_directories(xbox_present PRIVATE "${SDK}/lib/pbkit")
+add_executable(world $<TARGET_OBJECTS:xbox_present> main.cpp core/settings.c controllers.c finals_controls.cpp "${generated}/cart_symbols.c"
   "${world_obj}" nv2a/gfx_nv2a.cpp "${generated}/gfx_pc.cpp" "${GE}/port/fast3d/gfx_cc.cpp")
 target_compile_features(world PRIVATE cxx_std_20)
 target_include_directories(world PRIVATE "${generated}/finals" shim "${GE}" "${GE}/port/include" "${GE}/port/fast3d"

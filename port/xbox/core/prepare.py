@@ -21,6 +21,34 @@ def adapt(source, before, after):
     return source.replace(before, after)
 
 
+# Perfect Dark X's queue-retirement fix, applied to the configured SDK copy.
+# The GPU DPC can observe a VBlank before the ISR selects the pending surface.
+pbkit = Path(sys.argv[2]).read_text()
+pbkit = pbkit.replace("for(i=0;i<5;i++) pb_BackBufferbReady[i]=0;",
+                      "memset(pb_BackBufferbReady, 0, sizeof(pb_BackBufferbReady));")
+pbkit = adapt(pbkit, "if (pb_BackBufferbReady[next]==1)",
+              "if (pb_BackBufferbReady[next]==1 && (pb_debug_screen_active || "
+              "(VIDEOREG(PCRTC_START) & 0x03ffffffu) == (pb_FBAddr[pb_BackBufferIndex[next]] & 0x03ffffffu)))")
+pbkit += """
+void xboxAcquireBackBuffer(void)
+{
+    // Scan the ready queue before checking scanout. The ISR can move a buffer
+    // from queued to displayed, but only the render thread can queue it again.
+    for (;;) {
+        int queued = 0;
+        for (int i = 0; i < 3; ++i) {
+            if (pb_BackBufferbReady[i] && pb_BackBufferIndex[i] == pb_back_index)
+                queued = 1;
+        }
+        if (!queued && (VIDEOREG(PCRTC_START) & 0x03ffffffu) !=
+                       (pb_FBAddr[pb_back_index] & 0x03ffffffu)) return;
+        pb_wait_for_vbl();
+    }
+}
+"""
+emit("pbkit_present.c", pbkit)
+
+
 for unit in ("lv", "spectrum", "image_bank", "objecthandler", "initunk_005450", "loadobjectmodel", "front", "bondview2"):
     src = (repo / f"src/game/{unit}.c").read_text()
     # COFF has no ELF weak aliases. Alias the references within the original TU.

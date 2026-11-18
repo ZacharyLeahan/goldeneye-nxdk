@@ -18,7 +18,8 @@ Third-party code vendored into the port layer keeps its own license:
     libultraship / sm64-port lineage; see port/fast3d/LICENSE.txt.
   * port/xbox/nv2a/ - NV2A pbkit renderer and passthrough vertex program
     adapted from GTTeancum/Perfect-Dark-X at 18b5a4c48, with the vertex
-    constant initialization from 4e44f9297. Perfect Dark project MIT license,
+    constant initialization from 4e44f9297 and presentation safeguards
+    adapted from 86566c096. Perfect Dark project MIT license,
     (c) 2022 Ryan Dwyer (port/xbox/nv2a/LICENSE). The associated fast3d
     interface uses the license in port/fast3d/LICENSE.txt.
   * port/fast3d/glad/ - generated OpenGL loader (glad), public domain / MIT.

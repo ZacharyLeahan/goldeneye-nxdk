@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,7 +25,8 @@ int xboxFinalsWheel(int slot, int active, const FinalsPad *pad, const FinalsInve
                     int *equip);
 void xboxFinalsLook(int slot, const FinalsPad *pad, float fov, float dt, float *yaw, float *pitch);
 void xboxFinalsReset(int slot);
-void xboxFinalsOverlay(uint32_t *pixels, int pitch, int width, int height);
+void xboxFinalsOverlay(int width, int height);
+bool xboxDrawWheel(int slot, int left, int top, int width, int height, const uint32_t *replacement);
 
 #ifdef __cplusplus
 }

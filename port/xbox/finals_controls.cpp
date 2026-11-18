@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 #include "finals_constants.h"
 #define GRENADE_ITEM 26
@@ -38,7 +39,7 @@ PrecisionAimState look[4]{};
 SDL_SpinLock wheelLock;
 
 // The Windows renderer emits screen-space polygons and lines. Rasterize those
-// same primitives in the player's viewport after pbkit finishes world drawing.
+// same primitives into a transparent texture when the visible wheel changes.
 enum { GL_QUADS, GL_POLYGON, GL_LINE_LOOP, GL_LINE_STRIP, GL_TRIANGLE_STRIP };
 struct Point { float x,y; };
 struct Transform { float x,y,sx,sy; };
@@ -66,14 +67,22 @@ struct Painter : Wheel {
     void span(int y,int x1,int x2) {
         if (y<top || y>=bottom) return;
         x1=std::max(x1,left); x2=std::min(x2,right-1);
+        if (x1 > x2) return;
         uint32_t *row=pixels+y*stride;
+        uint32_t color=(alpha<<24)|(red<<16)|(green<<8)|blue;
+        if (alpha==255 || (x1==left && x2==right-1 && size==4 && !row[x1])) {
+            std::fill(row+x1,row+x2+1,color);
+            return;
+        }
         for (int x=x1;x<=x2;x++) {
             uint32_t d=row[x];
-            unsigned inv=255-alpha;
-            unsigned r=(red*alpha+((d>>16)&255)*inv)/255;
-            unsigned g=(green*alpha+((d>>8)&255)*inv)/255;
-            unsigned b=(blue*alpha+(d&255)*inv)/255;
-            row[x]=0xff000000u|(r<<16)|(g<<8)|b;
+            unsigned dstAlpha=((d>>24)*(255-alpha)+127)/255;
+            unsigned outAlpha=alpha+dstAlpha;
+            if (!outAlpha) continue;
+            unsigned r=(red*alpha+((d>>16)&255)*dstAlpha)/outAlpha;
+            unsigned g=(green*alpha+((d>>8)&255)*dstAlpha)/outAlpha;
+            unsigned b=(blue*alpha+(d&255)*dstAlpha)/outAlpha;
+            row[x]=(outAlpha<<24)|(r<<16)|(g<<8)|b;
         }
     }
     void fill(const Point *p,int n) {
@@ -152,8 +161,12 @@ extern "C" void xboxFinalsLook(int slot,const FinalsPad *p,float fov,float dt,fl
     *yaw+=float(d[0]);
     *pitch=std::clamp(*pitch+float(d[1]),-90.f,90.f);
 }
-extern "C" void xboxFinalsOverlay(uint32_t *pixels,int pitch,int width,int height) {
-    if(!pixels) return;
+extern "C" void xboxFinalsOverlay(int width,int height) {
+    struct CachedWheel {
+        int width, height, choice, count, grenades, ids[32];
+    };
+    static CachedWheel cached[4]{};
+    static std::vector<uint32_t> scratch;
     for(int i=0;i<4;i++){
         Painter painter;
         SDL_AtomicLock(&wheelLock);
@@ -162,16 +175,24 @@ extern "C" void xboxFinalsOverlay(uint32_t *pixels,int pitch,int width,int heigh
         SDL_AtomicUnlock(&wheelLock);
         if(!open) continue;
         auto &v=painter.snapshot;
-        painter.pixels=pixels; painter.stride=pitch/4;
-        painter.left=std::clamp(int(v.left*width),0,width);
-        painter.top=std::clamp(int(v.top*height),0,height);
-        painter.right=std::clamp(int((v.left+v.width)*width+.5f),painter.left,width);
-        painter.bottom=std::clamp(int((v.top+v.height)*height+.5f),painter.top,height);
-        int w=painter.right-painter.left,h=painter.bottom-painter.top;
+        int left=std::clamp(int(v.left*width),0,width);
+        int top=std::clamp(int(v.top*height),0,height);
+        int w=std::clamp(int((v.left+v.width)*width+.5f),left,width)-left;
+        int h=std::clamp(int((v.top+v.height)*height+.5f),top,height)-top;
         if(w<1||h<1) continue;
-        painter.uiScale=std::min(w/1280.f,h/720.f);
-        painter.transform={float(painter.left),float(painter.top),painter.uiScale,painter.uiScale};
-        painter.lineWidth=1;
-        painter.drawSectors(w/painter.uiScale,h/painter.uiScale);
+        CachedWheel key{w,h,painter.choice,painter.count,v.grenades,{}};
+        std::copy_n(painter.ids,painter.count,key.ids);
+        bool changed=memcmp(&key,&cached[i],sizeof(key))!=0;
+        if(changed) {
+            scratch.assign(w*h,0);
+            painter.pixels=scratch.data(); painter.stride=w;
+            painter.left=0; painter.top=0; painter.right=w; painter.bottom=h;
+            painter.uiScale=std::min(w/1280.f,h/720.f);
+            painter.transform={0,0,painter.uiScale,painter.uiScale};
+            painter.lineWidth=1;
+            painter.drawSectors(w/painter.uiScale,h/painter.uiScale);
+        }
+        if(xboxDrawWheel(i,left,top,w,h,changed?scratch.data():nullptr))
+            cached[i]=key;
     }
 }

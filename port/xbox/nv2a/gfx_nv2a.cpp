@@ -42,6 +42,7 @@ extern "C" {
 #include "platform.h"
 #include "system.h"
 
+extern "C" void xboxAcquireBackBuffer();
 extern "C" void serialPuts(const char *s);
 
 // ── NV097 indexed-register helpers ──────────────────────────────────────────
@@ -127,7 +128,8 @@ static inline void nv2a_copy_pixels(uint32_t *dst, const uint32_t *src,
 // Reserve ID zero as the invalid handle, so the backend needs one extra slot.
 #define MAX_GAME_TEXTURES 1025
 #define MAX_FRAMEBUFFERS  32
-#define MAX_TEXTURES      (MAX_GAME_TEXTURES + MAX_FRAMEBUFFERS)
+#define FIRST_WHEEL_TEXTURE (MAX_GAME_TEXTURES + MAX_FRAMEBUFFERS)
+#define MAX_TEXTURES (FIRST_WHEEL_TEXTURE + 4)
 #define TEXTURE_TILE_COUNT 2
 #define NV2A_TEXTURE_STAGE_COUNT 4
 
@@ -1010,7 +1012,11 @@ static NV2ADrawBindings nv2a_allocate_draw_bindings(const ShaderProgram &prg,
     bool varies_rgb[7] = {};
     bool varies_alpha[7] = {};
     const float *first_inputs = buf + input_base;
-    for (size_t vertex = 1; vertex < nverts; ++vertex) {
+    // If all inputs fit in vertex registers, constants can travel through
+    // those registers too. Only scan vertices when register assignment needs
+    // to distinguish constants from varying colors.
+    bool needs_scan = prg.num_inputs > (prg.opt_fog && prg.opt_alpha ? 1 : 2);
+    for (size_t vertex = 1; needs_scan && vertex < nverts; ++vertex) {
         const float *inputs = buf + vertex * stride + input_base;
         for (int slot = 0; slot < prg.num_inputs; ++slot) {
             const float *first = first_inputs + slot * input_width;
@@ -1465,29 +1471,15 @@ static void nv2a_end_noise_stencil(void)
     pb_end(p);
 }
 
-static void nv2a_scale_texcoord(int tile, float &s, float &t,
-                                       bool clamp_s, float max_s,
-                                       bool clamp_t, float max_t)
+struct TextureScale { float s, t; };
+
+static TextureScale nv2a_texcoord_scale(int tile)
 {
     const NV2ATexture *texture = g_draw_textures[tile];
-    if (!texture) return;
-
-    // Rectangle textures use texels. Swizzled textures use normalized UVs;
-    // a duplicated one-texel dimension occupies half of its storage.
-    const float width = texture->swizzled
-        ? (float)texture->width / texture->storage_width : (float)texture->width;
-    const float height = texture->swizzled
-        ? (float)texture->height / texture->storage_height : (float)texture->height;
-    s *= width;
-    t *= height;
-    if (clamp_s) {
-        max_s *= width;
-        if (s > max_s) s = max_s;
-    }
-    if (clamp_t) {
-        max_t *= height;
-        if (t > max_t) t = max_t;
-    }
+    if (!texture) return {1, 1};
+    if (!texture->swizzled) return {(float)texture->width, (float)texture->height};
+    return {(float)texture->width / texture->storage_width,
+            (float)texture->height / texture->storage_height};
 }
 
 static void nv2a_set_sampler_parameters(int sampler, bool linear_filter,
@@ -1696,7 +1688,7 @@ static uint8_t nv2a_clip_code(const float *v)
     return code;
 }
 
-static size_t nv2a_clip_triangle(const float *triangle, size_t stride,
+static size_t nv2a_clip_triangle(const float *triangle, size_t stride, uint8_t planes,
                                  float output[NV2A_MAX_CLIPPED_VERTICES]
                                              [NV2A_MAX_VERTEX_FLOATS])
 {
@@ -1711,6 +1703,8 @@ static size_t nv2a_clip_triangle(const float *triangle, size_t stride,
     }
 
     for (unsigned plane = 0; plane < 6 && count != 0; ++plane) {
+        // Convex interpolation stays inside every plane that contained all three inputs.
+        if (!(planes & (1u << plane))) continue;
         size_t target_count = 0;
         const float *previous = source[count - 1];
         float previous_distance = nv2a_clip_distance(previous, plane);
@@ -1933,6 +1927,7 @@ static void nv2a_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
         ++g_dbg_noise_stencil_draws;
     };
 
+    const TextureScale scale[2] = {nv2a_texcoord_scale(0), nv2a_texcoord_scale(1)};
     auto convert_vertex = [&](const float *v, NV2AStreamVertex &dst) {
         size_t off = 0;
 
@@ -1943,17 +1938,17 @@ static void nv2a_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
             s0 = v[off++]; t0 = v[off++];
             const float max_s = prg.clamp[0][0] ? v[off++] : 0.0f;
             const float max_t = prg.clamp[0][1] ? v[off++] : 0.0f;
-            nv2a_scale_texcoord(0, s0, t0,
-                                       prg.clamp[0][0], max_s,
-                                       prg.clamp[0][1], max_t);
+            if (prg.clamp[0][0] && s0 > max_s) s0 = max_s;
+            if (prg.clamp[0][1] && t0 > max_t) t0 = max_t;
+            s0 *= scale[0].s; t0 *= scale[0].t;
         }
         if (prg.used_textures[1]) {
             s1 = v[off++]; t1 = v[off++];
             const float max_s = prg.clamp[1][0] ? v[off++] : 0.0f;
             const float max_t = prg.clamp[1][1] ? v[off++] : 0.0f;
-            nv2a_scale_texcoord(1, s1, t1,
-                                       prg.clamp[1][0], max_s,
-                                       prg.clamp[1][1], max_t);
+            if (prg.clamp[1][0] && s1 > max_s) s1 = max_s;
+            if (prg.clamp[1][1] && t1 > max_t) t1 = max_t;
+            s1 *= scale[1].s; t1 *= scale[1].t;
         }
 
         float fog_factor = 0.0f;
@@ -2034,7 +2029,7 @@ static void nv2a_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
             continue;
         }
         const size_t polygon_count =
-            nv2a_clip_triangle(triangle, stride, polygon);
+            nv2a_clip_triangle(triangle, stride, code_or, polygon);
         if (polygon_count < 3) {
             ++rejected_triangles;
             continue;
@@ -2065,6 +2060,66 @@ static void nv2a_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
 }
 
 // ── Frame lifecycle ────────────────────────────────────────────────────────────
+
+// Draw a cached straight-alpha wheel as a pair of triangles. Each slot owns
+// its texture. The render thread has drained the previous frame before reuse.
+extern "C" bool xboxDrawWheel(int slot, int left, int top, int w, int h,
+                              const uint32_t *replacement)
+{
+    const int id = FIRST_WHEEL_TEXTURE + slot;
+    NV2ATexture &texture = g_textures[id];
+    if (replacement) {
+        const unsigned pitch = (w * 4u + 63u) & ~63u;
+        if (texture.vram && (texture.width != (unsigned)w || texture.height != (unsigned)h)) {
+            MmFreeContiguousMemory(texture.vram);
+            texture = {};
+        }
+        if (!texture.vram) {
+            texture.vram = (uint32_t *)MmAllocateContiguousMemoryEx(
+                pitch * h, 0, 0xffffffffu, 0, PAGE_READWRITE | PAGE_WRITECOMBINE);
+            if (!texture.vram) return false;
+            texture.used = true;
+            texture.width = texture.storage_width = w;
+            texture.height = texture.storage_height = h;
+            texture.pitch = pitch;
+            texture.fmt_word = 0x0001122au;
+        }
+        for (int y = 0; y < h; ++y)
+            nv2a_copy_pixels(texture.vram + y * (pitch / 4), replacement + y * w, w);
+        __asm__ volatile ("sfence" ::: "memory");
+    }
+    if (!texture.vram) return false;
+
+    const auto saved = g_rs;
+    auto *game_shader = g_current_shader;
+    int game_texture = g_active_texture[0];
+    const uint64_t mode = (uint64_t(SHADER_TEXEL0) << 12) | (uint64_t(SHADER_TEXEL0) << 28);
+    g_current_shader = nv2a_lookup_shader(mode, SHADER_OPT_ALPHA);
+    if (!g_current_shader) nv2a_create_and_load_new_shader(mode, SHADER_OPT_ALPHA);
+    g_active_texture[0] = id;
+    nv2a_set_viewport(left, g_target_height - top - h, w, h);
+    nv2a_set_scissor(left, g_target_height - top - h, w, h);
+    uint32_t *p = pb_begin();
+    p = pb_push1(p, NV097_SET_DEPTH_TEST_ENABLE, 0);
+    p = pb_push1(p, NV097_SET_DEPTH_WRITE_ENABLE, 0);
+    pb_end(p);
+    nv2a_set_use_alpha(true, false);
+    float vertices[] = {
+        -1,1,0,1,0,0,  1,1,0,1,1,0,  -1,-1,0,1,0,1,
+        -1,-1,0,1,0,1, 1,1,0,1,1,0,   1,-1,0,1,1,1,
+    };
+    nv2a_draw_triangles(vertices, sizeof(vertices)/sizeof(float), 2);
+    g_current_shader = game_shader;
+    g_active_texture[0] = game_texture;
+    nv2a_set_use_alpha(saved.use_alpha, saved.alpha_modulate);
+    nv2a_set_viewport(saved.vp_x, saved.vp_y, saved.vp_w, saved.vp_h);
+    nv2a_set_scissor(saved.sc_x, saved.sc_y, saved.sc_w, saved.sc_h);
+    p = pb_begin();
+    p = pb_push1(p, NV097_SET_DEPTH_TEST_ENABLE, saved.depth_test);
+    p = pb_push1(p, NV097_SET_DEPTH_WRITE_ENABLE, saved.depth_write);
+    pb_end(p);
+    return true;
+}
 
 static void nv2a_init(void)
 {
@@ -2267,10 +2322,9 @@ uint32_t g_SPXBFramebufferHeight = 0;
 
 static void nv2a_start_frame(void)
 {
-    pb_wait_for_vbl();
     pb_reset();
+    xboxAcquireBackBuffer();
     g_stream_vertex_cursor = 0;
-    pb_target_back_buffer();
     g_current_framebuffer = FB_BACK_BUFFER;
     g_target_width = pb_back_buffer_width();
     g_target_height = pb_back_buffer_height();
@@ -2323,10 +2377,10 @@ static void nv2a_finish_render(void)
     }
     // Hand the pushbuffer to the GPU and wait for it. Without this the
     // commands are never executed and we present a buffer nothing drew into.
+    xboxFinalsOverlay(g_target_width, g_target_height);
     while (pb_busy()) {
         /* GPU still consuming */
     }
-    xboxFinalsOverlay((uint32_t *)g_dbg_fb, g_dbg_fb_pitch, g_target_width, g_target_height);
     while (pb_finished()) {
         /* waiting on swap prepare */
     }
@@ -2352,6 +2406,7 @@ static void nv2a_finish_render(void)
     }
 #endif
 
+#ifdef GE_XBOX_RENDER_DIAGNOSTICS
     // Sample the finished frame and report it on the UART. PrintWindow
     // cannot read an OpenGL surface, so this is the only way to know what
     // is actually on screen without taking the window from the user.
@@ -2402,6 +2457,8 @@ static void nv2a_finish_render(void)
         }
     }
 
+#endif
+
     // Preserve the completed buffer as GL_FRONT's Xbox equivalent. pbkit
     // rotates to a different render target after presentation, so the game can
     // sample this buffer during the next frame without a 1.2 MB CPU snapshot.
@@ -2414,7 +2471,7 @@ static void nv2a_finish_render(void)
     g_SPXBFramebufferPitch = g_last_presented_pitch;
     g_SPXBFramebufferWidth = pb_back_buffer_width();
     g_SPXBFramebufferHeight = pb_back_buffer_height();
-    pb_show_front_screen();
+    // pbkit selects each completed frame in the VBlank ISR.
 }
 
 // ── Framebuffer API ───────────────────────────────────────────────────────────
