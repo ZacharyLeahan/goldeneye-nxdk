@@ -47,7 +47,7 @@ From an activated SDK shell, build the SDK libraries and tools once. Run
 the packager from the GoldenEye checkout with your retail US .z64 or ZIP.
 
 ```sh
-make -C "$NXDK_DIR" NXDK_ONLY=y NXDK_SDL=y all cxbe extract-xiso
+make -C "$NXDK_DIR" NXDK_ONLY=y NXDK_SDL=y NXDK_NET=y all cxbe extract-xiso
 python3 port/xbox/build.py --rom "GoldenEye 007.zip"
 ```
 
@@ -68,7 +68,7 @@ match using White, right-stick up, and A on port 2.
 
 1. Bind controllers to Xbox ports 1 and 2 before entering multiplayer setup.
 2. At file select, point the left stick at a dossier and press A. The mode
-   page lists **COOP CAMPAIGN**, **ONLINE MULTIPLAYER** and
+   page lists **COOP CAMPAIGN**, **LAN MULTIPLAYER** and
    **LOCAL MULTIPLAYER** in that order. Select the third row with A.
 3. Multiplayer Options opens with **Level Complex** selected. Check that it
    shows **Players 2**. The level picker displays Complex in the top row,
@@ -76,7 +76,10 @@ match using White, right-stick up, and A on port 2.
 4. Press Start to begin. Each player uses the left stick to move and the
    right stick to look. Pushing the right stick up looks up. A jumps, B
    toggles crouch, Y interacts, X reloads, LT aims, and RT fires. Click the
-   left stick while moving forward to sprint.
+   left stick while moving forward to sprint. Once up to speed, tap B to
+   slide. Release the stick to coast, or press A to jump out of the slide.
+   To mantle, face a ledge, move toward it and press A. You can press A again
+   in the air as you reach the lip.
 5. Hold the **White button** (LB on the Windows profile) to open the equipment
    wheel in your half of the screen. Flick the right stick toward an item and
    release White. Right selects grenades and down selects the jump pad.
@@ -87,16 +90,46 @@ match using White, right-stick up, and A on port 2.
    placement. RT deploys the pad and B stows it. On an invalid surface,
    RT keeps the pad in hand. Either player can walk onto the deployed pad.
 
-The Xbox target builds the look response, wheel selection, layout and artwork
+The Xbox target builds the mantle search and climb path, slide momentum,
+look response, wheel selection, layout and artwork
 from this fork's sources in `mods/the-finals/`. The nxdk adapter reads each
 physical controller separately and applies equipment and movement to that
 player in the native game. Changes to those shared sources trigger a rebuild.
 Changes to Windows-only hooks need a corresponding native Xbox implementation.
 
-Complex supports two-player local play. The Xbox build currently covers the
-controls above and jump-pad placement and launch. Mantling, slides, quick
-slap, hit bars, co-op and online play still need native
-Xbox support.
+Complex supports two-player local play. Quick slap, hit bars and co-op still
+need native Xbox support.
+
+### Host Complex on a wired LAN
+
+The NTSC-U Windows port in this checkout can host one original Xbox. Each
+machine has its own full-screen camera and controls its own player. The
+movement prototype exchanges position and facing over direct IPv4 UDP.
+Firing, damage, pickups, respawns and match results still need replication.
+The separate GE32 release uses a different multiplayer implementation.
+
+1. Connect both machines to the same LAN. On Windows, build this revision
+   with `./build-pc.sh ntsc-final` and prepare the US ROM and desktop asset
+   sidecars as described in `docs/building.md`, or use a prepared Windows
+   bundle. Run `ge007.x86_64.exe --lan-host` in the game directory. The
+   window waits for a client on UDP 27007. Connect the Windows controller
+   before launch.
+2. Run `ipconfig` and read the IPv4 address of the Ethernet adapter. If
+   Windows Firewall prompts, allow the game on the Private network profile.
+3. On Xbox, pick a dossier, then **LAN MULTIPLAYER**. Use D-pad left or right
+   to select an octet and up or down to change it. Hold LT to step by ten.
+   Press A to join, or B to go back. The host and client enter a two-player,
+   bot-free Complex match after the handshake. Use controller port 1.
+4. At spawn, stand still on Xbox while the Windows player moves across its
+   view and turns. Swap roles. Repeat from a fresh launch after unplugging
+   only the router's WAN cable. Record each build and both screens. The
+   third dossier row, **LOCAL MULTIPLAYER**, starts split-screen play.
+
+For a Windows distribution bundle, place `port/lan/Host-Complex.cmd` beside
+the executable. It prints the host's network addresses and starts the match.
+With a fresh asset-free bundle, place the retail US ROM at
+`data/ge007.ntsc-final.z64`. The launcher uses the bundled Python scripts
+and a Windows Python 3 installation for first-run conversion.
 
 After configuring the Xbox build, the wheel regression test can also run
 on a host with a C++20 compiler and SDL2. It compares the fork's original

@@ -318,6 +318,8 @@ D572,?,Linux tarball glibc floor lowered from 2.38 to 2.31:,CHANGED 2026-10-07 (
 D573,PARTIAL,Downstream nxdk runs the original Rareware sequence with the shared software RSP and a pbkit NV2A renderer.,PARTIAL 2026-11-18 (xemu)
 D574,FIXED,Xbox split-screen equipment wheels and frame pacing in Complex.,FIXED 2026-11-18 (physical Xbox)
 D575,FIXED,"Xbox wheel flicks, jump-pad rendering and model-slot layout in local multiplayer.",FIXED 2026-11-18 (downstream Xbox)
+D576,FIXED,Two-player Xbox mantling and sprint slides in Complex.,FIXED 2026-11-18 (downstream Xbox)
+D577,?,Two-machine Complex LAN movement and independent cameras.,"IN PROGRESS (Xbox hardware verified against a test peer, native Windows host built)"
 D407,CLOSED,Tanks cannot be boarded/exited on PC —,CLOSED (2026-09-28 bookkeeping:
 D408,FIXED,Game.SkipIntro skips the post-mission failure dossier:,FIXED 2026-09-30 (SkipIntro hook gated to first boot; live dossier check owed).
 D415,FIXED,"Shooting a light fixture does not ""kill"" its flickering light (Bunker, Caverns):",FIXED (2026-09-29 bookkeeping:

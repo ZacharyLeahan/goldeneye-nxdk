@@ -1,3 +1,4 @@
+include("${GE}/port/lan/build-id.cmake")
 find_program(LLVM_LINK llvm-link REQUIRED)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/core")
@@ -13,7 +14,7 @@ set(core_inputs "${pbkit_source}" "${CMAKE_CURRENT_LIST_DIR}/prepare.py" ${origi
   "${GE}/port/src/romdata.c" "${GE}/port/src/romassets_u.s"
   "${GE}/assets/animationtable_data.h" "${upstream_build}" "${GE}/port/fast3d/gfx_pc.cpp")
 set(finals_dir "${GE}/mods/the-finals")
-foreach(file weapon-wheel.c wheel-layout.h wheel-render.h retro-ui.h precision-aim.h jump-pad-render.h jump-pad.h combat.h)
+foreach(file weapon-wheel.c wheel-layout.h wheel-render.h retro-ui.h precision-aim.h jump-pad-render.h jump-pad.h combat.h mantle.h slide.h)
   list(APPEND core_inputs "${finals_dir}/${file}")
 endforeach()
 list(APPEND core_inputs "${CMAKE_CURRENT_LIST_DIR}/finals_sources.py")
@@ -70,7 +71,7 @@ add_custom_command(OUTPUT "${world_obj}"
   DEPENDS world_ir $<TARGET_OBJECTS:world_ir> COMMAND_EXPAND_LISTS VERBATIM)
 add_library(xbox_present OBJECT "${generated}/pbkit_present.c")
 target_include_directories(xbox_present PRIVATE "${SDK}/lib/pbkit")
-add_executable(world $<TARGET_OBJECTS:xbox_present> main.cpp core/settings.c controllers.c finals_controls.cpp "${generated}/cart_symbols.c"
+add_executable(world $<TARGET_OBJECTS:xbox_present> main.cpp "${GE}/port/lan/lan.c" core/settings.c controllers.c finals_controls.cpp "${generated}/cart_symbols.c"
   "${world_obj}" nv2a/gfx_nv2a.cpp "${generated}/gfx_pc.cpp" "${GE}/port/fast3d/gfx_cc.cpp")
 target_compile_features(world PRIVATE cxx_std_20)
 target_include_directories(world PRIVATE "${generated}/finals" shim "${GE}" "${GE}/port/include" "${GE}/port/fast3d"
@@ -79,7 +80,8 @@ target_compile_definitions(world PRIVATE ${region_flags} AVOID_UB=1 PAL=0 PORT=1
   PORT_DRAM_SIZE=0 Z_SOLO __XBOX__)
 target_compile_options(world PRIVATE ${common_options} -include port/xbox/shim/platform.h
   -ffunction-sections -fdata-sections $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
-target_link_libraries(world PRIVATE "${SDK}/lib/libpbkit.lib" "${SDK}/lib/libnxdk_automount_d.lib"
+target_include_directories(world PRIVATE "${SDK}/lib/net/lwip/src/include" "${SDK}/lib/net/nforceif/include")
+target_link_libraries(world PRIVATE "${SDK}/lib/libnxdk_net.lib" "${SDK}/lib/libpbkit.lib" "${SDK}/lib/libnxdk_automount_d.lib"
   "${SDK}/lib/libzlib.lib" "${SDK}/lib/libSDL2.lib" "${SDK}/lib/nxdk_usb.lib")
 target_link_options(world PRIVATE -stack:524288 -opt:ref -map -include:_automount_d_drive)
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/default.xbe"

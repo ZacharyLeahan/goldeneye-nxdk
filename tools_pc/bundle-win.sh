@@ -39,6 +39,9 @@ echo "==> Bundling $EXE  ->  $NAME"
 rm -rf "$OUT"
 mkdir -p "$OUT/licenses"
 cp "$EXE" "$OUT/"
+if [ "$(basename "$EXE")" = ge007.x86_64.exe ]; then
+  cp port/lan/Host-Complex.cmd "$OUT/"
+fi
 
 # --- runtime DLLs ---------------------------------------------------------
 # Explicit allowlist; the closure check below fails the build if the exe needs

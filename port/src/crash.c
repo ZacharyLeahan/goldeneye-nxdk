@@ -36,8 +36,13 @@
 #include <inttypes.h>
 #include <excpt.h>
 
-/* D38: MinGW's <windows.h> does not declare this; add it (NT4+ API). */
-extern int GetCurrentThreadStackLimits(PVOID *lpLowAddress, PVOID *lpHighAddress);
+int portCurrentThreadStackLimits(void **low, void **high)
+{
+    NT_TIB *tib = (NT_TIB *)NtCurrentTeb();
+    *low = tib->StackLimit;
+    *high = tib->StackBase;
+    return *low != NULL && *high != NULL;
+}
 
 static LPTOP_LEVEL_EXCEPTION_FILTER prevExFilter;
 
@@ -92,7 +97,7 @@ static void crashStackTraceRaw(char *msg, PEXCEPTION_POINTERS exinfo)
               (unsigned)(context.FloatSave.ControlWord & 0xffff),
               (unsigned)(context.FloatSave.StatusWord & 0xffff));
     PVOID low = NULL, high = NULL;
-    if (GetCurrentThreadStackLimits(&low, &high)) {
+    if (portCurrentThreadStackLimits(&low, &high)) {
         CRASH_MSG("thread stack: %p..%p  Rsp=%p  used=%llu bytes\n",
                   low, high, (void *)context.Rsp,
                   (unsigned long long)((uintptr_t)high - (uintptr_t)context.Rsp));
@@ -155,7 +160,7 @@ static void crashStackTraceSym(char *msg, PEXCEPTION_POINTERS exinfo)
 
 #if defined(PLATFORM_X86_64)
     PVOID low = NULL, high = NULL;
-    if (!GetCurrentThreadStackLimits(&low, &high)) {
+    if (!portCurrentThreadStackLimits(&low, &high)) {
         snprintf(msg, CRASH_MAX_MSG, "\nBACKTRACE: (no stack limits)\n");
         return;
     }

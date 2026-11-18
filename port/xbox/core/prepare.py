@@ -95,8 +95,13 @@ for unit in ("lv", "spectrum", "image_bank", "objecthandler", "initunk_005450", 
         src = adapt(src, entry, '#include "port/xbox/core/finals_game.inc"\n\n' + entry)
         src = adapt(src, "bondviewProcessInput(stick_x, stick_y, buttons, oldbuttons);",
                     "xboxFinalsProcessInput(stick_x, stick_y, buttons, oldbuttons);")
+        # Animation decelerates over several ticks. During a grab, the mantle
+        # path owns horizontal displacement, including on a long frame.
+        src = adapt(src, "start_collision_pos_x = g_CurrentPlayer->field_488.collision_position.f[0];",
+                    "if (traversal->mantle.active) move_offset.x = move_offset.z = 0;\n        "
+                    "start_collision_pos_x = g_CurrentPlayer->field_488.collision_position.f[0];")
         src = adapt(src, "bondviewUpdatePlayerY(use_stanHeight, sp390);",
-                    "xboxFinalsVertical();\n    bondviewUpdatePlayerY(use_stanHeight, sp390);")
+                    "xboxFinalsVertical(&use_stanHeight, &sp390);\n    bondviewUpdatePlayerY(use_stanHeight, sp390);")
     if unit == "front":
         # Only Complex has converted multiplayer stage data in xbox.bin.
         # Use the stock disabled-tile rendering for every unavailable arena.
@@ -117,7 +122,10 @@ for unit in ("lv", "spectrum", "image_bank", "objecthandler", "initunk_005450", 
                     "if (isGunBarrelInMode2())\n    {\n        frontChangeMenu(is_first_time_on_main_menu ? MENU_EYE_INTRO : MENU_FILE_SELECT, TRUE);")
         marker = "void init_menu06_modeselect(void)\n{"
         src = adapt(src, marker, '#include "port/xbox/core/mode_menu.inc"\n\n' +
-                    marker + "\n    xboxModeMessage = NULL;")
+                    marker + "\n    lanClose(); lanEditor = 0; xboxModeMessage = NULL;")
+        entry = "    if (frontCheckCursorOnPreviousTab())"
+        idx = src.index(entry, src.index("void interface_menu06_modesel(void)\n{"))
+        src = src[:idx] + "    if (lanEditor) { xboxLanEditorTick(); return; }\n" + src[idx:]
         # Leave dossier setup, the previous tab and actual menu transitions
         # upstream. Only the downstream mode rows and hit zones differ.
         start = src.index("    else if ((is_cheat_menu_available) && (275.0f <= cursor_v_pos))")
@@ -138,6 +146,10 @@ for unit in ("lv", "spectrum", "image_bank", "objecthandler", "initunk_005450", 
     if unit == "spectrum":
         src = src.replace("#define spec_keyboard_row_caps_z_x_c_v spec_keyboard_buffer",
                           "#define spec_keyboard_row_caps_z_x_c_v spec_keyboard_buffer[0]")
+    if unit in ("lv", "bondview2"):
+        sys.path.insert(0, str(repo / "port/lan"))
+        from adapt import adapt as adapt_lan
+        src = adapt_lan(unit, src)
     emit(f"{unit}.c", src)
 
 rom = (repo / "port/src/romdata.c").read_text()

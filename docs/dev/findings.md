@@ -726,6 +726,8 @@ covers D24–D69; the log continues in §H (D32 procedure, D70–D121).
 | D573 | Downstream nxdk runs the original Rareware sequence with the shared software RSP and a pbkit NV2A renderer. | PARTIAL 2026-11-18 (xemu) |
 | D574 | Xbox split-screen equipment wheels and frame pacing in Complex. | FIXED 2026-11-18 (physical Xbox) |
 | D575 | Xbox wheel flicks, jump-pad rendering and model-slot layout in local multiplayer. | FIXED 2026-11-18 (downstream Xbox) |
+| D576 | Two-player Xbox mantling and sprint slides in Complex. | FIXED 2026-11-18 (downstream Xbox) |
+| D577 | Two-machine Complex LAN movement and independent cameras. | IN PROGRESS (Xbox hardware verified against a test peer, native Windows host built) |
 | D407 | **Tanks cannot be boarded/exited on PC — the v0.4.0 use/reload split (D378/D393) removed the B-button tap the engine's tank handlers in `bondview2.c` consume (user report 2026-09-28, Runway/Streets)** — full `## D407` entry at file tail | **CLOSED (2026-09-28 bookkeeping: tank board/exit accepted by the user; shipped in v0.4.0).** Earlier: PARTIAL (fix landed in v0.4.0, port-only): present `GE_CONT_B` on the use (E / pad A) rising edge only while `g_PlayerIsInTank == 1` or `g_BondCanEnterTank != 0`; E keeps its D378 no-reload-fallback semantics elsewhere, N64 layout unaffected. D407(b) same cycle: front PC Options page-edge highlight clamp + mouse-wheel / W-S paging (wheel queue consumed on the menu, D223); its wheel mapping shipped inverted and was fixed to match W/S (wheel up = step up). D407(c): board-animation lockout, menu-accept B gate in tank states, in-tank aim routed through the legacy velocity stick + `Input.TankAimScale` knob. RESOLVED 2026-09-28: all port-only (src/game zero-diff), 10 TANKDBG probes stripped, release binary verified clean, user live tank drive signed off (board + exit OK, aim feel good). |
 | D408 | **`Game.SkipIntro` skips the post-mission failure dossier: with it on, entering a level then aborting (watch Z+A) or dying (KIA) returns straight to the menus — no REPORT / "Mission status: KILLED IN ACTION / ABORTED" screen** (user report 2026-09-28; save/AllUnlocked ruled out) — full `## D408` entry at file tail | FIXED 2026-09-30 (SkipIntro hook gated to first boot; live dossier check owed). |
 | D415 | **Shooting a light fixture does not "kill" its flickering light (Bunker, Caverns): the fixture takes the hit but the flicker keeps going (community report, issue #87 comment by the reporter, 2026-09-28, 00 Agent playthrough of v0.4.0).** — full `## D415` entry at file tail | FIXED (2026-09-29 bookkeeping: root-caused and fixed as D430 + D431, user-verified vs GEPD/1964 on Caverns 2026-09-29; #119). Earlier: ROOT-CAUSED as D430 (see there); fix in tree, live check owed. |
@@ -18469,3 +18471,51 @@ equipped the pad. KVM video showed B stowing it, the green placement preview,
 the deployed tread and arrow, and the player launching. A subsequent grenade
 throw reduced the count from three to two. The wheel reopened after the blast
 and the pad displayed its invalid-floor hint beside the wall.
+
+## D576 — Downstream Xbox mantling and sprint slides in Complex (2026-11-18)
+
+The Xbox adapter used B only to change stance and A only to apply a vertical
+impulse. The nxdk build now takes the slide response, ledge and barrier
+searches, press buffer and climb curves from the fork's GE32 sources.
+Each local player owns their movement state. During a grab, the climb path
+drives horizontal displacement while the native walking animation decelerates.
+
+The two opposing walkways exposed a frame-time spike when both players swept
+their collision volumes on the same tick. The Xbox now reuses static room
+triangles and navigation samples, and reads dynamic collision bounds once per
+player update. Cached room vertices are copied so that unloading a room cannot
+invalidate them. A room that exceeds the cache budget uses the engine ray test.
+The renderer clips directly from the submitted vertices and consumes the
+result from its last clipping pass.
+
+Hardware checks used two-player Complex with a fixed spawn seed. Both players
+climbed the opposing walkways and stood on the upper navigation tiles at
+281.06 world units. Both coasted from a sprint into a slide. A, a second B
+press, the equipment wheel and reversing direction each ended a slide. Walking
+into a crouch and jumping on open ground remained independent actions.
+A second run drove player two through the physical controller port with the
+ESP-KVM and captured both moves on video.
+
+
+The full traversal route sweep produced fourteen successful grabs plus two
+open-floor controls. In the two-walkway test the 95th-percentile mantle frame
+time fell from 71.6 ms to about 22 ms. Dense views of the raised corridor
+still measured about 27–30 FPS with stationary players.
+
+## D577 — Full-screen Complex movement over a wired LAN
+
+For downstream issue #19 the Windows executable opens a direct UDP listener
+and starts Complex when the Xbox joins. Both machines run the native stage
+with two player objects. Each simulates its local controller, publishes its
+own position and facing, and resolves the remote pose against local navigation
+geometry. The adapter preserves per-player prop ticks and submits only the
+local player's display list. The Xbox LAN option and the Windows host switch
+enable these changes. The local match path continues to use split-screen.
+
+The controller-operated join test changed an IP octet, accepted the address,
+and entered Complex on the host response. A Mac test peer exchanged player poses with the Xbox
+on the wired LAN. The capture showed a single camera and a moving, turning
+remote character. The peer received translation and changes in heading from
+physical Xbox controller reports. A native x86-64 Windows host was
+cross-compiled from the same source tree. The acceptance test on a Windows
+machine, followed by a fresh match with the WAN disconnected, is pending.

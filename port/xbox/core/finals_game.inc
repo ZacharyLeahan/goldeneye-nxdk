@@ -32,6 +32,8 @@ static int xboxGrounded(void)
         fabsf(stanGetPositionYValue(p->field_488.current_tile_ptr, at->x, at->z) - p->stanHeight) < 3;
 }
 
+#include "port/xbox/core/traversal.inc"
+
 static float xboxCeiling(float rise)
 {
     struct player *p = g_CurrentPlayer;
@@ -40,35 +42,39 @@ static float xboxCeiling(float rise)
     float scale = get_room_data_float1();
     float nearest = 1e9f;
     float top = p->field_70 + head + rise + 5;
-    // A split-screen camera may be facing away from the launch. Prepare the
-    // collision data for every room intersecting this body sweep.
-    for (int r = 1; r < g_MaxNumRooms; ++r) {
-        s_room_info *room=&g_BgRoomInfo[r];
-        if (room->csize_primary_DL_binary <= 0 ||
-            (from.x-31)*scale > room->maxbounds.x+1 || (from.x+31)*scale < room->minbounds.x-1 ||
-            (from.z-31)*scale > room->maxbounds.z+1 || (from.z+31)*scale < room->minbounds.z-1 ||
-            p->field_70*scale > room->maxbounds.y+1 || top*scale < room->minbounds.y-1) continue;
-        if (!room->vtx_batch_bounds) {
-            bgCheckIfRoomModelNeedsLoad(r);
-            bgBuildRoomVtxBounds(r);
-            if (!room->vtx_batch_bounds) return p->field_70;
-        }
-    }
     for (int ray = 0; ray < 17; ++ray) {
         float angle = (ray - 1) * .3926990817f;
         from.x = p->field_488.collision_position.x + (ray ? 31*cosf(angle) : 0);
         from.z = p->field_488.collision_position.z + (ray ? 31*sinf(angle) : 0);
-        from.y = p->field_70 + 12.5f;
+        from.y = p->field_70 + .25f;
+        // On a ramp the uphill side of the footprint starts inside the
+        // walking surface. Only discard hits adjacent to its connected tile.
+        float support = -FLT_MAX;
+        StandTile *toe = p->field_488.current_tile_ptr;
+        coord3d center = p->field_488.collision_position;
+        if (toe && (!ray || walkTilesBetweenPoints_NoCallback(&toe,center.x,center.z,from.x,from.z)) && toe) {
+            float h = stanGetPositionYValue(toe,from.x,from.z);
+            if (h <= p->field_70 + 48) {
+                support = h;
+                from.y = fmaxf(from.y,h+.5f);
+            }
+        }
         coord3d to = from;
         to.y = top;
-        for (int r = 1; r < g_MaxNumRooms; r++) {
-            s_room_info *room = &g_BgRoomInfo[r];
-            if (!room->vtx_batch_bounds || from.x*scale < room->minbounds.x-1 ||
-                from.x*scale > room->maxbounds.x+1 || from.z*scale < room->minbounds.z-1 ||
-                from.z*scale > room->maxbounds.z+1) continue;
+        for (int r=0;r<nearbyCount;r++) {
             HitThing hit;
-            if (bgTestBulletHitBackground(&from,&to,r,&hit)) {
+            int result=roomRay(nearbyRooms[r],from,to,&hit);
+            if(result<0)return p->field_70;
+            if(result) {
                 float y=hit.hitpos.y/scale;
+                if (hit.normal.y>0 && fabsf(y-support)<=12 && y>=from.y-.5f && y<top) {
+                    coord3d above=from;
+                    above.y=y+.5f;
+                    result=roomRay(nearbyRooms[r],above,to,&hit);
+                    if(result<0)return p->field_70;
+                    if(!result)continue;
+                    y=hit.hitpos.y/scale;
+                }
                 if (y>=from.y-.5f && y<=to.y+1 && y<nearest) nearest=y;
             }
         }
@@ -107,10 +113,15 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
     int slot = get_cur_playernum();
     struct player *p = g_CurrentPlayer;
     XboxLife *life = &xboxLives[slot];
+    traversal=&traversalPlayers[slot];
     FinalsPad pad;
     xboxReadFinalsPad(slot, &pad);
-    if (life->owner != p || g_GlobalTimer < life->timer || p->bonddead) {
+    if (life->owner != p || traversal->mantle.stage!=lvlGetCurrentStageToLoad() || g_GlobalTimer < life->timer || p->bonddead) {
         memset(life,0,sizeof(*life));
+        memset(traversal,0,sizeof(*traversal));
+        traversal->life=life;
+        traversal->mantle.stage=lvlGetCurrentStageToLoad();
+        playerMeshes[slot].valid=0;
         life->owner=p; life->previous=pad.buttons;
         xboxFinalsReset(slot);
     }
@@ -123,7 +134,10 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
     int active = !p->bonddead && !g_PlayerIsInTank && !g_stopPlayFlag && !g_gameOverFlag &&
         p->watch_animation_state==WATCH_ANIMATION_0x0 && !lvlGetControlsLockedFlag() &&
         disablePlayerActionsWhenPausedOrInMpMenu();
+    traversal->allowed=active;
+    traversal->mantle.clock=g_GlobalTimer;
     if(!active){
+        mantleAbort(); slideStop(); life->jump=life->sprint=0;
         gunSetGunAmmoVisible(0x40000000,1);
         life->wheelOpen=0;
         xboxFinalsReset(slot);
@@ -173,6 +187,9 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
         }
         if(pressed&FIN_A){life->jump=1;p->crouchpos=CROUCH_STAND;}
     }
+    traversal->blocked=wheelInput || life->carrying || traversal->padFlight;
+    slideBefore(!wheelInput && (pressed & FIN_B));
+    if (traversal->mantle.active) native &= ~Z_TRIG;
     // Accept a new trigger squeeze on the same report as a pad selection.
     if ((!wheelInput || equipment==PAD_ITEM) && !selecting && life->carrying &&
         (pressed&FIN_FIRE) && life->validPreview) {
@@ -193,18 +210,25 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
     life->sprintBlend=life->sprint?fminf(1,life->sprintBlend+g_GlobalTimerDelta/9):0;
     float scale=(native&R_TRIG)?.90f:MOVE_RUN_SCALE*(1+(MOVE_SPRINT_RATIO-1)*life->sprintBlend);
     p->speedforwards=forward*1.08f*scale; p->speedsideways=side*scale;
+    traversal->mantle.forward=forward>.25f;
+    slideAfter();
+    if(traversal->mantle.active) p->speedforwards=p->speedsideways=0;
     p->speedtheta=p->speedverta=0;
     if(!wheelInput) xboxFinalsLook(slot,&pad,p->fovy,g_GlobalTimerDelta,&p->vv_theta,&p->vv_verta);
 }
 
-static void xboxFinalsVertical(void)
+static void xboxFinalsVertical(int *useHeight, float *offset)
 {
     XboxLife *life=&xboxLives[get_cur_playernum()];
     struct player *p=g_CurrentPlayer;
+    traversal=&traversalPlayers[get_cur_playernum()];
     int jump=life->jump;
     life->jump=0;
-    if(p->bonddead || lvlGetControlsLockedFlag() || !life->loaded) return;
-    float impulse=jump && xboxGrounded()?5.8f:0;
+    if(!traversal->allowed || !life->loaded) return;
+    traversal->jumpCooldown=fmaxf(0,traversal->jumpCooldown-g_GlobalTimerDelta);
+    if (traversal->airborne && xboxGrounded()) traversal->airborne=traversal->padFlight=0;
+    if (jump && !traversal->mantle.active) mantlePress(g_GlobalTimer);
+    float impulse=jump && !traversal->mantle.active && traversal->jumpCooldown<=0 && xboxGrounded()?5.8f:0;
     for(int i=0;i<getPlayerCount();i++){
         XboxLife *other=&xboxLives[i];
         if(i==get_cur_playernum()) other->padCooldown=fmaxf(0,other->padCooldown-g_GlobalTimerDelta);
@@ -214,15 +238,23 @@ static void xboxFinalsVertical(void)
             impulse=PAD_IMPULSE; other->padCooldown=45;
         }
     }
-    if(impulse && xboxCeiling(impulse+4)>p->field_70+5){
+    if(impulse || p->field_7C>0 || traversal->mantle.active || traversal->mantle.armed)
+        traversalPrepare();
+    if(impulse && xboxCeiling(70)>p->field_70+5){
         float h=stanGetPositionYValue(p->field_488.current_tile_ptr,p->field_488.collision_position.x,p->field_488.collision_position.z);
         float floor=p->stanHeight;
         if(h>floor && h-floor<=8) floor=h;
+        traversal->jumpCooldown=8;
+        if(impulse==PAD_IMPULSE){ mantleStop(); traversal->padFlight=1; }
+        traversal->airborne=1; traversal->origin=floor; traversal->takeoff=g_GlobalTimer;
         p->field_70=fmaxf(p->field_70,floor)+.05f; p->field_7C=impulse;
     }
     if(p->field_7C>0 && p->field_70>p->stanHeight){
         float rise=p->field_7C*g_GlobalTimerDelta;
         if(xboxCeiling(rise+2)<=p->field_70+rise+2) p->field_7C=0;
+    }
+    if(traversal->mantle.active || traversal->mantle.armed){
+        mantleVertical(useHeight,offset);
     }
 }
 

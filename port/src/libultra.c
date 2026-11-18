@@ -918,7 +918,7 @@ static void piServiceDma(s32 direction, u32 srcPA, void *dstVA, u32 size)
 #if defined(PLATFORM_WINDOWS)
             {
                 PVOID tlow = NULL, thigh = NULL;
-                GetCurrentThreadStackLimits(&tlow, &thigh);
+                portCurrentThreadStackLimits(&tlow, &thigh);
                 sysLogPrintf(LOG_ERROR,
                              "D60 thread stack: %p..%p  dst-in-stack=%d\n",
                              (void *)tlow, (void *)thigh,

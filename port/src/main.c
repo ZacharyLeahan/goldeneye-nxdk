@@ -66,6 +66,9 @@ static void portPrintHelp(const char *argv0)
 {
     portPrintVersion();
     printf("\nusage: %s [options] [-level_XX]\n\n"
+#ifdef GE_LAN_HOST
+           "  --lan-host        host two-player Complex on the wired LAN (UDP 27007)\n"
+#endif
            "  --help            this message\n"
            "  --version         build id only\n"
            "  -fresh            wipe playtest data + config before starting\n"
@@ -123,6 +126,9 @@ void portAllUnlockedApply(void)
 #endif
 }
 
+#ifdef GE_LAN_HOST
+#include "port/lan/lan.h"
+#endif
 int main(int argc, char **argv)
 {
     sysSetArgs(argc, argv);
@@ -162,6 +168,11 @@ int main(int argc, char **argv)
      * skips it for good. */
     configLoad();
     videoApplySteamDeckPreset();
+#ifdef GE_LAN_HOST
+    if (sysArgCheck("--lan-host")) {
+        if (!lanDesktopHost()) return 1;
+    } else
+#endif
     updateCheckStart();   /* opt-in (Game.CheckUpdates, default off); no-op otherwise */
     atexit(portAtExit);   /* persist config + window geometry on clean exit */
 
@@ -220,6 +231,9 @@ int main(int argc, char **argv)
         sysLogPrintf(LOG_ERROR, "videoInit failed");
         return 1;
     }
+#ifdef GE_LAN_HOST
+    if (lanIsHost() && !lanDesktopWait()) return 0;
+#endif
     audioInit();
     mixerInit();
     inputInit();

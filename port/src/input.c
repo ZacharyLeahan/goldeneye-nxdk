@@ -80,6 +80,9 @@
 #include "system.h"
 #include "config.h"
 #include "input.h"
+#ifdef GE_LAN_HOST
+#include "port/lan/lan.h"
+#endif
 #include "envflag.h"
 #include "optionsoverlay.h"
 #include "video.h"
@@ -334,6 +337,9 @@ static int s_seatCompactOwed = 0;   /* a seat was vacated in a match */
 enum { MPR_KBMP1 = 1, MPR_PADSP1 = 2 };
 static int mpRoute(void)
 {
+#ifdef GE_LAN_HOST
+    if (lanActive()) return 0;  /* Local pad and keyboard both own seat zero. */
+#endif
     /* In a match, count the seats used at any point this match (the sticky
      * mask only grows), so an unplug never changes the routing. */
     int n = nRealPads;
@@ -1230,6 +1236,9 @@ static void inputOpenPads(void)
             connectedMask |= (1 << (n + 1)) - 1;
         }
     }
+#ifdef GE_LAN_HOST
+    if (lanActive()) connectedMask = 3;
+#endif
     numControllers = 1;
     for (int i = 1; i < MAX_PADS; ++i) {
         if (connectedMask & (1 << i)) {
@@ -2100,6 +2109,13 @@ static unsigned inputComputePadSlot(int idx, signed char *stick_x, signed char *
 unsigned inputComputePad(int idx, signed char *stick_x, signed char *stick_y)
 {
     unsigned r;
+#ifdef GE_LAN_HOST
+    if (idx > 0 && lanActive()) {
+        if (stick_x) *stick_x = 0;
+        if (stick_y) *stick_y = 0;
+        return 0;
+    }
+#endif
     if (idx > 0 && inputMpSplit() && idx >= getPlayerCount()) {   /* D416: no player owns this slot */
         if (stick_x) *stick_x = 0;
         if (stick_y) *stick_y = 0;

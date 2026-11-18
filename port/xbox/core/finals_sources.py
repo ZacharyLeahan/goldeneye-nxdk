@@ -1,7 +1,7 @@
 """Extract the platform-independent parts of the fork's GE32 extension for nxdk.
 
-The Windows extension's SDL/GL hooks and binary addresses have no Xbox ABI.
-The input response, inventory selection and wheel artwork do.
+The Xbox build reuses the controller response, wheel and traversal algorithms.
+It supplies native engine symbols and per-player state for the GE32 hooks.
 """
 from pathlib import Path
 
@@ -38,3 +38,45 @@ def generate(root: Path, emit):
     constants = section("jump-pad.h", "#define PAD_ITEM", "static volatile LONG")
     constants += section("combat.h", "#define MOVE_RUN_SCALE", "static ")
     emit("finals_constants.h", constants)
+
+    # Keep the GE32 route search, button window, curves and slide response in
+    # the fork. Translate its executable-specific ABI to native engine fields.
+    movement = section("mantle.h", "#define MANTLE_BUFFER", "static struct")
+    mantle_state = section("mantle.h", "static struct", "static volatile LONG")
+    slide_state = section("slide.h", "static struct", "static void slideButton")
+    emit("finals_traversal_types.inc", movement +
+         mantle_state.replace("static struct", "typedef struct").replace("} mantle;", "} XboxMantle;") +
+         slide_state.replace("static struct", "typedef struct").replace("} slide;", "} XboxSlide;"))
+
+    mantle = section("mantle.h", "static void mantlePress", "static int mantleFacesPlayer")
+    mantle += section("mantle.h", "static int mantleTopAt", "static void mantleStop")
+    mantle += section("mantle.h", "static int mantleVertical(int *useHeight", "static void mantlePublish")
+    slide = section("slide.h", "static int slideGrounded", "static void slideBefore")
+    slide += "static void slideBefore(int request){\n float dt=g_GlobalTimerDelta;\n"
+    slide += section("slide.h", "slide.cooldown=fmaxf", "static void testSlideInput")
+    source = mantle + slide
+    fields = {"PF(140)": "field_70", "PF(144)": "stanHeight", "PF(152)": "field_7C",
+              "PF(1864)": "field_488.collision_position.x", "PF(1872)": "field_488.collision_position.z",
+              "PF(380)": "vv_theta", "PF(13940)": "standheight", "PP(1856)": "field_488.current_tile_ptr",
+              "PP(200)": "prop", "PI(184)": "crouchpos", "PF(424)": "speedforwards", "PF(416)": "speedsideways"}
+    for old, field in fields.items():
+        source = source.replace(old, "g_CurrentPlayer->" + field)
+    bindings = {
+        "FN(int(*)(void*,float,float),0xd5e10)": "stanTestPointWithinTileBoundsMaybe",
+        "FN(int(*)(void**,float,float,float,float),0xd6870)": "walkTilesBetweenPoints_NoCallback",
+        "FN(float(*)(void*,float,float),0x1000+879136)": "stanGetPositionYValue",
+        "*(float*)(base+0x303000+211436)": "g_GlobalTimerDelta",
+        "void **tile": "StandTile **tile", "void *tile": "StandTile *tile",
+        "void *landing": "StandTile *landing", "jumpAllowed()": "traversal->allowed",
+        "openWheel||gadget.flight||slap.phase||padCarrying": "traversal->blocked",
+        "openWheel||padCarrying||slap.phase": "traversal->blocked",
+        "drop.active=jumpActive=0": "jumpActive=0", "InterlockedExchange(&mantleBusy,1);": "",
+        "sprintLatched=sprintOn=0": "sprintOn=0",
+        'if(logfile){fprintf(logfile,"slide start=%d entry=%.3f\\n",slide.starts,slide.entry);fflush(logfile);}': "",
+        "jumpStandingOnFloor(g_CurrentPlayer->field_70,g_CurrentPlayer->stanHeight,g_CurrentPlayer->field_7C)": "xboxGrounded()",
+    }
+    for old, new in bindings.items():
+        if old not in source:
+            raise ValueError(f"Review fork traversal binding: {old}")
+        source = source.replace(old, new)
+    emit("finals_traversal.inc", source.replace("mantle.", "traversal->mantle.").replace("slide.", "traversal->slide."))

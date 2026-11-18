@@ -596,6 +596,9 @@ set(SRC
 # Target
 # ----------------------------------------------------------------------------
 set(BIN_NAME "ge007${BIN_REGION}.${TARGET_ARCH}")
+if(WIN32 AND ROMID STREQUAL "ntsc-final")
+  include(port/lan/desktop.cmake)
+endif()
 add_executable(ge007 ${SRC})
 target_link_libraries(ge007 ${LIBS})
 set_target_properties(ge007 PROPERTIES OUTPUT_NAME "${BIN_NAME}")

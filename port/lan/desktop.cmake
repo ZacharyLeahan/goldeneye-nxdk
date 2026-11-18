@@ -1,0 +1,16 @@
+include("${CMAKE_CURRENT_LIST_DIR}/build-id.cmake")
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lan")
+foreach(unit lv bondview2)
+  set(src "${CMAKE_SOURCE_DIR}/src/game/${unit}.c")
+  set(dst "${CMAKE_CURRENT_BINARY_DIR}/lan/${unit}.c")
+  add_custom_command(OUTPUT "${dst}" COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_LIST_DIR}/adapt.py" "${src}" "${dst}"
+    DEPENDS "${src}" "${CMAKE_CURRENT_LIST_DIR}/adapt.py" VERBATIM)
+  list(REMOVE_ITEM SRC "${src}")
+  list(APPEND SRC "${dst}")
+endforeach()
+list(APPEND SRC "${CMAKE_CURRENT_LIST_DIR}/lan.c" "${CMAKE_CURRENT_LIST_DIR}/desktop.c")
+list(REMOVE_ITEM SRC "${CMAKE_SOURCE_DIR}/port/src/pc_netorder.c")
+list(APPEND LIBS ws2_32)
+add_compile_definitions(GE_LAN_HOST=1)

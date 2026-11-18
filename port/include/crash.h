@@ -11,6 +11,9 @@
 extern "C" {
 #endif
 
+#ifdef PLATFORM_WINDOWS
+int portCurrentThreadStackLimits(void **low, void **high);
+#endif
 void crashInit(void);
 void crashShutdown(void);
 

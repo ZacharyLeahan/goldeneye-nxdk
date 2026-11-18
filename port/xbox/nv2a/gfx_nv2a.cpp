@@ -1688,30 +1688,31 @@ static uint8_t nv2a_clip_code(const float *v)
     return code;
 }
 
-static size_t nv2a_clip_triangle(const float *triangle, size_t stride, uint8_t planes,
-                                 float output[NV2A_MAX_CLIPPED_VERTICES]
-                                             [NV2A_MAX_VERTEX_FLOATS])
-{
-    float work_a[NV2A_MAX_CLIPPED_VERTICES][NV2A_MAX_VERTEX_FLOATS];
-    float work_b[NV2A_MAX_CLIPPED_VERTICES][NV2A_MAX_VERTEX_FLOATS];
-    float (*source)[NV2A_MAX_VERTEX_FLOATS] = work_a;
-    float (*target)[NV2A_MAX_VERTEX_FLOATS] = work_b;
-    size_t count = 3;
+struct ClipPolygon {
+    float buffer[2][NV2A_MAX_CLIPPED_VERTICES * NV2A_MAX_VERTEX_FLOATS];
+    const float *vertices;
+    size_t pitch;
+};
 
-    for (size_t i = 0; i < count; ++i) {
-        memcpy(source[i], triangle + i * stride, stride * sizeof(float));
-    }
+static size_t nv2a_clip_triangle(const float *triangle, size_t stride, uint8_t planes,
+                                 ClipPolygon &polygon)
+{
+    polygon.vertices = triangle;
+    polygon.pitch = stride;
+    unsigned dst = 0;
+    size_t count = 3;
 
     for (unsigned plane = 0; plane < 6 && count != 0; ++plane) {
         // Convex interpolation stays inside every plane that contained all three inputs.
         if (!(planes & (1u << plane))) continue;
         size_t target_count = 0;
-        const float *previous = source[count - 1];
+        float *target = polygon.buffer[dst];
+        const float *previous = polygon.vertices + (count - 1) * polygon.pitch;
         float previous_distance = nv2a_clip_distance(previous, plane);
         bool previous_inside = previous_distance >= 0.0f;
 
         for (size_t i = 0; i < count; ++i) {
-            const float *current = source[i];
+            const float *current = polygon.vertices + i * polygon.pitch;
             const float current_distance = nv2a_clip_distance(current, plane);
             const bool current_inside = current_distance >= 0.0f;
 
@@ -1721,14 +1722,14 @@ static size_t nv2a_clip_triangle(const float *triangle, size_t stride, uint8_t p
                 const float t = denominator != 0.0f
                     ? previous_distance / denominator : 0.0f;
                 for (size_t component = 0; component < stride; ++component) {
-                    target[target_count][component] = previous[component]
+                    target[target_count * NV2A_MAX_VERTEX_FLOATS + component] = previous[component]
                         + (current[component] - previous[component]) * t;
                 }
                 ++target_count;
             }
             if (current_inside) {
                 assert(target_count < NV2A_MAX_CLIPPED_VERTICES);
-                memcpy(target[target_count], current, stride * sizeof(float));
+                memcpy(target + target_count * NV2A_MAX_VERTEX_FLOATS, current, stride * sizeof(float));
                 ++target_count;
             }
 
@@ -1738,13 +1739,9 @@ static size_t nv2a_clip_triangle(const float *triangle, size_t stride, uint8_t p
         }
 
         count = target_count;
-        float (*swap)[NV2A_MAX_VERTEX_FLOATS] = source;
-        source = target;
-        target = swap;
-    }
-
-    for (size_t i = 0; i < count; ++i) {
-        memcpy(output[i], source[i], stride * sizeof(float));
+        polygon.vertices = target;
+        polygon.pitch = NV2A_MAX_VERTEX_FLOATS;
+        dst ^= 1;
     }
     return count;
 }
@@ -1994,7 +1991,7 @@ static void nv2a_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
     uint32_t batch_count = 0;
     size_t output_triangles = 0;
     size_t rejected_triangles = 0;
-    float polygon[NV2A_MAX_CLIPPED_VERTICES][NV2A_MAX_VERTEX_FLOATS];
+    ClipPolygon polygon;
 
     for (size_t triangle_index = 0; triangle_index < buf_vbo_num_tris;
          ++triangle_index) {
@@ -2036,11 +2033,11 @@ static void nv2a_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
         }
 
         for (size_t fan = 1; fan + 1 < polygon_count; ++fan) {
-            convert_vertex(polygon[0],
+            convert_vertex(polygon.vertices,
                            g_stream_vertices[g_stream_vertex_cursor++]);
-            convert_vertex(polygon[fan],
+            convert_vertex(polygon.vertices + fan * polygon.pitch,
                            g_stream_vertices[g_stream_vertex_cursor++]);
-            convert_vertex(polygon[fan + 1],
+            convert_vertex(polygon.vertices + (fan + 1) * polygon.pitch,
                            g_stream_vertices[g_stream_vertex_cursor++]);
             batch_count += 3;
             ++output_triangles;

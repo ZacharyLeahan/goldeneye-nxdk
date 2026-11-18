@@ -1,6 +1,7 @@
 #include <SDL.h>
 #include <PR/os.h>
 #include "controllers.h"
+#include "port/lan/lan.h"
 #include "finals_controls.h"
 
 static FinalsPad finalsPads[MAXCONTROLLERS];
@@ -9,7 +10,7 @@ static SDL_SpinLock finalsLock;
 void xboxReadFinalsPad(int slot, FinalsPad *pad)
 {
     SDL_AtomicLock(&finalsLock);
-    *pad = finalsPads[slot];
+    *pad = lanActive() && slot != 0 ? (FinalsPad){0} : finalsPads[slot];
     SDL_AtomicUnlock(&finalsLock);
 }
 
@@ -29,7 +30,7 @@ int inputConnectedMask(void)
     int mask = 0;
     for (int i = 0; i < MAXCONTROLLERS; ++i)
         if (pads[i].device) mask |= 1 << i;
-    return mask;
+    return lanActive() ? (mask | 3) : mask;
 }
 
 static int stick(int axis)
@@ -102,7 +103,7 @@ void inputUpdate(void)
 
 unsigned inputComputePad(int slot, signed char *x, signed char *y)
 {
-    if ((unsigned)slot >= MAXCONTROLLERS) { *x = *y = 0; return 0; }
+    if ((unsigned)slot >= MAXCONTROLLERS || (lanActive() && slot != 0)) { *x = *y = 0; return 0; }
     *x = pads[slot].x;
     *y = pads[slot].y;
     return pads[slot].held;
