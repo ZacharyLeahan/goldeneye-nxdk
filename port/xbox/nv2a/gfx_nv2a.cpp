@@ -137,6 +137,8 @@ struct NV2ATexture {
     uint32_t    alias_pitch;
     uint32_t    width;
     uint32_t    height;
+    uint32_t    storage_width, storage_height;
+    bool        swizzled;
     uint32_t    pitch;
     uint32_t    fmt_word;    // NV097_SET_TEXTURE_FORMAT value cached
     bool        linear_filter;
@@ -169,8 +171,7 @@ struct NV2AHardwareTextureState {
 static NV2AHardwareTextureState g_hw_texture[NV2A_TEXTURE_STAGE_COUNT];
 static bool g_texture_program_valid = false;
 static uint32_t g_texture_program = 0;
-static uint32_t g_draw_texture_width[TEXTURE_TILE_COUNT] = {};
-static uint32_t g_draw_texture_height[TEXTURE_TILE_COUNT] = {};
+static const NV2ATexture *g_draw_textures[TEXTURE_TILE_COUNT] = {};
 
 static NV2ATexture g_blur_texture = {};
 static int g_blur_source_id = -1;
@@ -189,6 +190,79 @@ struct NV2AStreamVertex {
 static NV2AStreamVertex *g_stream_vertices = nullptr;
 static uint32_t g_stream_vertex_cursor = 0;
 static bool g_stream_attributes_bound = false;
+
+static inline bool nv2a_is_power_of_two(uint32_t value)
+{
+    return value && (value & (value - 1u)) == 0;
+}
+
+static uint32_t nv2a_log2_power_of_two(uint32_t value)
+{
+    uint32_t result = 0;
+    while (value > 1u) {
+        value >>= 1;
+        ++result;
+    }
+    return result;
+}
+
+static uint32_t nv2a_swizzled_a8r8g8b8_format(uint32_t width,
+                                               uint32_t height)
+{
+    // DMA selector 2 is pbkit's full 64 MiB DMA-B object. Swizzled 2D
+    // A8R8G8B8 encodes its power-of-two dimensions in FORMAT rather than in
+    // the LU_IMAGE rectangle alone.
+    return 2u | (1u << 3) | (2u << 4) | (0x06u << 8) | (1u << 16) |
+           (nv2a_log2_power_of_two(width) << 20) |
+           (nv2a_log2_power_of_two(height) << 24);
+}
+
+static void nv2a_generate_swizzle_masks(uint32_t width, uint32_t height,
+                                         uint32_t &mask_x, uint32_t &mask_y)
+{
+    mask_x = mask_y = 0;
+    uint32_t dimension_bit = 1;
+    uint32_t address_bit = 1;
+    bool done;
+    do {
+        done = true;
+        if (dimension_bit < width) {
+            mask_x |= address_bit;
+            address_bit <<= 1;
+            done = false;
+        }
+        if (dimension_bit < height) {
+            mask_y |= address_bit;
+            address_bit <<= 1;
+            done = false;
+        }
+        dimension_bit <<= 1;
+    } while (!done);
+}
+
+static inline uint32_t nv2a_spread_swizzle_bits(uint32_t value,
+                                                uint32_t mask)
+{
+    uint32_t result = 0;
+    uint32_t source_bit = 1;
+    for (uint32_t destination_bit = 1; destination_bit &&
+         destination_bit <= mask; destination_bit <<= 1) {
+        if (!(mask & destination_bit)) continue;
+        if (value & source_bit) result |= destination_bit;
+        source_bit <<= 1;
+    }
+    return result;
+}
+
+static inline uint32_t nv2a_swizzled_pixel_index(uint32_t x, uint32_t y,
+                                                  uint32_t width,
+                                                  uint32_t height)
+{
+    uint32_t mask_x, mask_y;
+    nv2a_generate_swizzle_masks(width, height, mask_x, mask_y);
+    return nv2a_spread_swizzle_bits(x, mask_x) |
+           nv2a_spread_swizzle_bits(y, mask_y);
+}
 
 static uint32_t nv2a_alloc_texture_id(void)
 {
@@ -275,8 +349,11 @@ static void nv2a_init_noise_texture(void)
         sysFatalError("NV2A: unable to allocate screen-noise texture");
     }
 
+    uint32_t mask_x, mask_y;
+    nv2a_generate_swizzle_masks(width, height, mask_x, mask_y);
+    uint32_t offset_y = 0;
     for (uint32_t y = 0; y < height; ++y) {
-        uint32_t *row = (uint32_t *)((uint8_t *)g_noise_texture.vram + y * pitch);
+        uint32_t offset_x = 0;
         for (uint32_t x = 0; x < width; ++x) {
             // Stable integer avalanche: all channels receive the same uniform
             // value, matching the scalar random() used by the PC fragment
@@ -288,15 +365,22 @@ static void nv2a_init_noise_texture(void)
             hash *= 0x846ca68bu;
             hash ^= hash >> 16;
             const uint32_t value = hash & 255u;
-            row[x] = value * 0x01010101u;
+            g_noise_texture.vram[offset_x + offset_y] =
+                value * 0x01010101u;
+            offset_x = (offset_x - mask_x) & mask_x;
         }
+        offset_y = (offset_y - mask_y) & mask_y;
     }
 
     g_noise_texture.used = true;
     g_noise_texture.width = width;
     g_noise_texture.height = height;
+    g_noise_texture.storage_width = width;
+    g_noise_texture.storage_height = height;
     g_noise_texture.pitch = pitch;
-    g_noise_texture.fmt_word = 0x0001122au;
+    g_noise_texture.fmt_word =
+        nv2a_swizzled_a8r8g8b8_format(width, height);
+    g_noise_texture.swizzled = true;
     g_noise_texture.linear_filter = false;
     g_noise_texture.address_s = 1; // repeat
     g_noise_texture.address_t = 1;
@@ -546,9 +630,9 @@ static void nv2a_bind_texture(int tile, NV2ATexture &t)
     words[0] = (uint32_t)(uintptr_t)nv2a_texture_data(t) & 0x03ffffffu;
     words[1] = t.fmt_word;
     words[2] = nv2a_texture_pitch(t) << 16;
-    words[3] = (t.width << 16) | t.height;
-    words[4] = ((uint32_t)t.address_s << 0) |
-               ((uint32_t)t.address_t << 8) | (3u << 16);
+    words[3] = (t.storage_width << 16) | t.storage_height;
+    words[4] = ((uint32_t)(t.swizzled ? t.address_s : 3u)) |
+               ((uint32_t)(t.swizzled ? t.address_t : 3u) << 8) | (3u << 16);
     words[5] = nv2a_filter_word(t.linear_filter);
     words[6] = 0x4003ffc0u;
     if (g_anisotropy > 1 && t.mipmaps) words[6] |= 0x10u;
@@ -560,13 +644,12 @@ static void nv2a_bind_texture(int tile, NV2ATexture &t)
     }
 
     uint32_t *p = pb_begin();
-    p = pb_push1(p, NV097_TEXTURE_OFFSET(tile), words[0]);
-    p = pb_push1(p, NV097_TEXTURE_FORMAT(tile), words[1]);
+    p = pb_push2(p, NV097_TEXTURE_OFFSET(tile), words[0], words[1]);
     p = pb_push1(p, NV097_TEXTURE_CONTROL1(tile), words[2]);
     p = pb_push1(p, NV097_TEXTURE_IMAGE_RECT(tile), words[3]);
     p = pb_push1(p, NV097_TEXTURE_ADDRESS(tile), words[4]);
-    p = pb_push1(p, NV097_TEXTURE_FILTER(tile), words[5]);
     p = pb_push1(p, NV097_TEXTURE_CONTROL0(tile), words[6]);
+    p = pb_push1(p, NV097_TEXTURE_FILTER(tile), words[5]);
     pb_end(p);
     ++g_dbg_texture_binds;
     hw.valid = true;
@@ -604,8 +687,18 @@ static void nv2a_upload_texture(const uint8_t *rgba32_buf,
     t.alias_vram = nullptr;
     t.alias_pitch = 0;
 
-    const uint32_t pitch = (width * 4u + 63u) & ~63u;
-    const uint32_t bytes = pitch * height;
+    // Swizzled textures are the NV2A-native path for wrap/mirror sampling.
+    // N64 TMEM images are normally power-of-two; keep genuinely NPOT images
+    // linear and hardware-clamped. One-pixel dimensions are duplicated to a
+    // 2D swizzled surface so the 2D projective stage remains valid.
+    const bool swizzled = nv2a_is_power_of_two(width) &&
+                          nv2a_is_power_of_two(height);
+    const uint32_t storage_width = swizzled && width < 2u ? 2u : width;
+    const uint32_t storage_height = swizzled && height < 2u ? 2u : height;
+    const uint32_t pitch = swizzled
+        ? storage_width * 4u
+        : (width * 4u + 63u) & ~63u;
+    const uint32_t bytes = pitch * storage_height;
 
     // Free old allocation if size changed
     if (t.vram) {
@@ -624,38 +717,76 @@ static void nv2a_upload_texture(const uint8_t *rgba32_buf,
 
     if (!t.vram) {
         sysLogPrintf(LOG_ERROR, "NV2A: MmAllocateContiguousMemory failed (%ux%u)", width, height);
+        t.used = false;
+        t.width = 0;
+        t.height = 0;
+        t.pitch = 0;
+        t.fmt_word = 0;
+        g_active_texture[tile] = -1;
+        nv2a_disable_texture(tile);
+        g_texture_program_valid = false;
         return;
     }
 
-    // Copy RGBA data — NV2A uses ARGB internally, so we swizzle
-    for (uint32_t y = 0; y < height; ++y) {
-        const uint8_t *src = rgba32_buf + y * width * 4u;
-        uint8_t *dst = (uint8_t *)t.vram + y * pitch;
-        for (uint32_t x = 0; x < width; ++x) {
-            uint8_t r = src[0], g = src[1], b = src[2], a = src[3];
-            dst[0] = b;
-            dst[1] = g;
-            dst[2] = r;
-            dst[3] = a;
-            src += 4;
-            dst += 4;
+    // Convert RGBA to the A8R8G8B8 byte layout used by NV2A. Native textures
+    // are Morton/Z ordered; linear NPOT surfaces retain their padded pitch.
+    if (swizzled) {
+        uint32_t mask_x, mask_y;
+        nv2a_generate_swizzle_masks(storage_width, storage_height,
+                                    mask_x, mask_y);
+        uint32_t offset_y = 0;
+        for (uint32_t y = 0; y < storage_height; ++y) {
+            const uint32_t source_y = y < height ? y : height - 1u;
+            uint32_t offset_x = 0;
+            for (uint32_t x = 0; x < storage_width; ++x) {
+                const uint32_t source_x = x < width ? x : width - 1u;
+                const uint8_t *src = rgba32_buf +
+                    (source_y * width + source_x) * 4u;
+                uint8_t *dst = (uint8_t *)t.vram +
+                    (offset_x + offset_y) * 4u;
+                dst[0] = src[2];
+                dst[1] = src[1];
+                dst[2] = src[0];
+                dst[3] = src[3];
+                offset_x = (offset_x - mask_x) & mask_x;
+            }
+            offset_y = (offset_y - mask_y) & mask_y;
         }
-        memset(dst, 0, pitch - width * 4u);
+    } else {
+        for (uint32_t y = 0; y < height; ++y) {
+            const uint8_t *src = rgba32_buf + y * width * 4u;
+            uint8_t *dst = (uint8_t *)t.vram + y * pitch;
+            for (uint32_t x = 0; x < width; ++x) {
+                const uint8_t r = src[0], g = src[1];
+                const uint8_t b = src[2], a = src[3];
+                dst[0] = b;
+                dst[1] = g;
+                dst[2] = r;
+                dst[3] = a;
+                src += 4;
+                dst += 4;
+            }
+            memset(dst, 0, pitch - width * 4u);
+        }
     }
 
     t.width  = width;
     t.height = height;
+    t.storage_width = storage_width;
+    t.storage_height = storage_height;
     t.pitch  = pitch;
-    t.address_s = 1; // repeat
-    t.address_t = 1;
+    t.swizzled = swizzled;
+    if (!t.address_s) t.address_s = 3;
+    if (!t.address_t) t.address_t = 3;
     // Linear NPOT textures cannot carry a conventional mip chain. Remember
     // the request so anisotropy/filter state remains coherent while sampling
     // the base level, which is the only level N64 TMEM uploads require here.
     t.mipmaps = gen_mipmaps;
     ++t.content_version;
 
-    // 2D, one mip level, linear/NPOT A8R8G8B8 in pbkit's DMA context.
-    t.fmt_word = 0x0001122au;
+    t.fmt_word = swizzled
+        ? nv2a_swizzled_a8r8g8b8_format(storage_width, storage_height)
+        : 0x0001122au;
 
     // The initial select happens before the allocation exists and therefore
     // disables the unit. Rebind now that the texture has valid storage/state.
@@ -667,6 +798,7 @@ static void nv2a_prepare_textures_for_draw(void)
     uint32_t texture_program = 0;
 
     for (int tile = 0; tile < TEXTURE_TILE_COUNT; ++tile) {
+        g_draw_textures[tile] = nullptr;
         if (!g_current_shader->used_textures[tile]) continue;
 
         const int texture_id = g_active_texture[tile];
@@ -681,8 +813,7 @@ static void nv2a_prepare_textures_for_draw(void)
             if (blurred) draw_texture = blurred;
         }
         nv2a_bind_texture(tile, *draw_texture);
-        g_draw_texture_width[tile] = draw_texture->width;
-        g_draw_texture_height[tile] = draw_texture->height;
+        g_draw_textures[tile] = draw_texture;
         if (tile == 0) {
             texture_program |= NV097_SET_SHADER_STAGE_PROGRAM_STAGE0_2D_PROJECTIVE;
         } else {
@@ -1333,26 +1464,19 @@ static void nv2a_end_noise_stencil(void)
     pb_end(p);
 }
 
-static void nv2a_scale_linear_texcoord(int tile, float &s, float &t,
+static void nv2a_scale_texcoord(int tile, float &s, float &t,
                                        bool clamp_s, float max_s,
                                        bool clamp_t, float max_t)
 {
-    const int texture_id = g_active_texture[tile];
+    const NV2ATexture *texture = g_draw_textures[tile];
+    if (!texture) return;
 
-    if (texture_id <= 0 || texture_id >= MAX_TEXTURES ||
-        !g_textures[texture_id].used || !g_textures[texture_id].vram) {
-        return;
-    }
-
-    // gfx_pc supplies normalized coordinates, matching sampler2D on the GL
-    // backend. NV2A LU_IMAGE (linear/NPOT) textures use texel-space input;
-    // XEMU performs the same normalization when translating the texture stage.
-    const uint32_t draw_width = g_draw_texture_width[tile]
-        ? g_draw_texture_width[tile] : g_textures[texture_id].width;
-    const uint32_t draw_height = g_draw_texture_height[tile]
-        ? g_draw_texture_height[tile] : g_textures[texture_id].height;
-    const float width = (float)draw_width;
-    const float height = (float)draw_height;
+    // Rectangle textures use texels. Swizzled textures use normalized UVs;
+    // a duplicated one-texel dimension occupies half of its storage.
+    const float width = texture->swizzled
+        ? (float)texture->width / texture->storage_width : (float)texture->width;
+    const float height = texture->swizzled
+        ? (float)texture->height / texture->storage_height : (float)texture->height;
     s *= width;
     t *= height;
     if (clamp_s) {
@@ -1765,6 +1889,7 @@ static void nv2a_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
     auto emit_stream_range = [](uint32_t first_vertex, uint32_t count) {
         if (count == 0) return;
         uint32_t *p = pb_begin();
+        p = pb_push1(p, NV097_BREAK_VERTEX_BUFFER_CACHE, 0);
         p = pb_push1(p, NV097_SET_BEGIN_END, NV097_SET_BEGIN_END_OP_TRIANGLES);
         uint32_t start = first_vertex;
         uint32_t remaining = count;
@@ -1817,7 +1942,7 @@ static void nv2a_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
             s0 = v[off++]; t0 = v[off++];
             const float max_s = prg.clamp[0][0] ? v[off++] : 0.0f;
             const float max_t = prg.clamp[0][1] ? v[off++] : 0.0f;
-            nv2a_scale_linear_texcoord(0, s0, t0,
+            nv2a_scale_texcoord(0, s0, t0,
                                        prg.clamp[0][0], max_s,
                                        prg.clamp[0][1], max_t);
         }
@@ -1825,7 +1950,7 @@ static void nv2a_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
             s1 = v[off++]; t1 = v[off++];
             const float max_s = prg.clamp[1][0] ? v[off++] : 0.0f;
             const float max_t = prg.clamp[1][1] ? v[off++] : 0.0f;
-            nv2a_scale_linear_texcoord(1, s1, t1,
+            nv2a_scale_texcoord(1, s1, t1,
                                        prg.clamp[1][0], max_s,
                                        prg.clamp[1][1], max_t);
         }
@@ -1954,8 +2079,7 @@ static void nv2a_init(void)
     memset(g_hw_texture, 0, sizeof(g_hw_texture));
     g_texture_program_valid = false;
     g_combiner_cache_valid = false;
-    memset(g_draw_texture_width, 0, sizeof(g_draw_texture_width));
-    memset(g_draw_texture_height, 0, sizeof(g_draw_texture_height));
+    memset(g_draw_textures, 0, sizeof(g_draw_textures));
     g_blur_texture = {};
     g_blur_source_id = -1;
     g_blur_source_version = 0;
@@ -2087,10 +2211,10 @@ static void nv2a_upload_viewport_constants(void)
     uint32_t phase = g_frame_count * 0x9e3779b9u + 0x7f4a7c15u;
     phase ^= phase >> 16;
     const float noise_transform[4] = {
-        g_noise_scale,
-        g_noise_scale,
-        (float)(phase & 255u),
-        (float)((phase >> 8) & 255u),
+        g_noise_scale / 256.0f,
+        g_noise_scale / 256.0f,
+        (float)(phase & 255u) / 256.0f,
+        (float)((phase >> 8) & 255u) / 256.0f,
     };
 
     uint32_t *p = pb_begin();
@@ -2417,6 +2541,9 @@ static void nv2a_update_framebuffer_parameters(int fb_id,
     texture.used = true;
     texture.width = width;
     texture.height = height;
+    texture.storage_width = width;
+    texture.storage_height = height;
+    texture.swizzled = false;
     texture.pitch = pitch;
     texture.fmt_word = 0x0001122au;
     texture.linear_filter = true;
@@ -2452,13 +2579,17 @@ static bool nv2a_start_draw_to_framebuffer(int fb_id, float noise_scale)
 
 static uint32_t nv2a_average_rect(const uint8_t *base, uint32_t pitch,
                                   uint32_t x0, uint32_t y0,
-                                  uint32_t x1, uint32_t y1)
+                                  uint32_t x1, uint32_t y1,
+                                  const NV2ATexture *swizzled_texture = nullptr)
 {
     uint32_t a = 0, r = 0, g = 0, b = 0, count = 0;
     for (uint32_t y = y0; y < y1; ++y) {
         const uint32_t *row = (const uint32_t *)(base + y * pitch);
         for (uint32_t x = x0; x < x1; ++x) {
-            const uint32_t px = row[x];
+            const uint32_t px = swizzled_texture
+                ? ((const uint32_t *)base)[nv2a_swizzled_pixel_index(
+                      x, y, swizzled_texture->storage_width, swizzled_texture->storage_height)]
+                : row[x];
             b += px & 255u;
             g += (px >> 8) & 255u;
             r += (px >> 16) & 255u;
@@ -2525,7 +2656,8 @@ static NV2ATexture *nv2a_prepare_blur_texture(int source_id)
             const uint32_t x0 = x * 4u;
             uint32_t x1 = x0 + 4u;
             if (x1 > source.width) x1 = source.width;
-            row[x] = nv2a_average_rect(src, source_pitch, x0, y0, x1, y1);
+            row[x] = nv2a_average_rect(src, source_pitch, x0, y0, x1, y1,
+                                       source.swizzled ? &source : nullptr);
         }
         memset(row + width, 0, pitch - width * 4u);
     }
@@ -2533,6 +2665,9 @@ static NV2ATexture *nv2a_prepare_blur_texture(int source_id)
     g_blur_texture.used = true;
     g_blur_texture.width = width;
     g_blur_texture.height = height;
+    g_blur_texture.storage_width = width;
+    g_blur_texture.storage_height = height;
+    g_blur_texture.swizzled = false;
     g_blur_texture.pitch = pitch;
     g_blur_texture.fmt_word = 0x0001122au;
     g_blur_texture.linear_filter = true;

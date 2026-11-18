@@ -58,6 +58,9 @@ For an Xbox dashboard installation, copy `default.xbe`, `xbox.bin` and
 These private outputs contain cartridge data. Running the packager without
 `--rom` builds the executable alone.
 
+On a physical Xbox, launching `default.xbe` from XBMC has been verified
+through the Rareware logo to the four-dossier **Select File** screen.
+
 ### Play Complex locally
 
 1. Bind controllers to Xbox ports 1 and 2 before entering multiplayer setup.
