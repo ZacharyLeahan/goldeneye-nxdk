@@ -1,6 +1,17 @@
 #include <SDL.h>
 #include <PR/os.h>
 #include "controllers.h"
+#include "finals_controls.h"
+
+static FinalsPad finalsPads[MAXCONTROLLERS];
+static SDL_SpinLock finalsLock;
+
+void xboxReadFinalsPad(int slot, FinalsPad *pad)
+{
+    SDL_AtomicLock(&finalsLock);
+    *pad = finalsPads[slot];
+    SDL_AtomicUnlock(&finalsLock);
+}
 
 static struct {
     SDL_Joystick *device;
@@ -50,6 +61,22 @@ void inputUpdate(void)
     }
     for (int i = 0; i < MAXCONTROLLERS; ++i) {
         SDL_Joystick *joy = pads[i].device;
+        FinalsPad raw = {0};
+        if (joy) {
+            raw.lx = SDL_JoystickGetAxis(joy, 0);
+            raw.ly = SDL_JoystickGetAxis(joy, 1);
+            raw.rx = SDL_JoystickGetAxis(joy, 3);
+            raw.ry = SDL_JoystickGetAxis(joy, 4);
+            for (int b = 0; b <= 4; ++b)
+                if (SDL_JoystickGetButton(joy, b)) raw.buttons |= 1u << b;
+            if (SDL_JoystickGetButton(joy, 8)) raw.buttons |= FIN_SPRINT;
+            if (SDL_JoystickGetButton(joy, 9)) raw.buttons |= FIN_SLAP;
+            if (SDL_JoystickGetAxis(joy, 2) > 4000) raw.buttons |= FIN_AIM;
+            if (SDL_JoystickGetAxis(joy, 5) > 4000) raw.buttons |= FIN_FIRE;
+        }
+        SDL_AtomicLock(&finalsLock);
+        finalsPads[i] = raw;
+        SDL_AtomicUnlock(&finalsLock);
         if (!joy) continue;
         u16 buttons = 0;
         int hat = SDL_JoystickGetHat(joy, 0);

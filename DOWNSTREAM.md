@@ -61,7 +61,8 @@ These private outputs contain cartridge data. Running the packager without
 On a physical Xbox, launching `default.xbe` from XBMC has been verified
 through file select and into two-player split-screen Complex. The test used a
 controller in port 1 and direct IP-KVM input in port 2 to turn and walk the
-second player.
+second player. The fork-controls build was also tested in a physical two-player
+match using White, right-stick up, and A on port 2.
 
 ### Play Complex locally
 
@@ -72,14 +73,25 @@ second player.
 3. Multiplayer Options opens with **Level Complex** selected. Check that it
    shows **Players 2**. The level picker displays Complex in the top row,
    third tile, and dims arenas without Xbox assets.
-4. Press Start to begin. The default GoldenEye control style uses the left
-   stick to move and turn, the right stick for the N64 C buttons, RT for Z
-   (fire), LT for R (aim), A to select or cycle weapons and B to go back or
-   interact.
+4. Press Start to begin. Each player uses the left stick to move and the
+   right stick to look. Pushing the right stick up looks up. A jumps, B
+   toggles crouch, Y interacts, X reloads, LT aims, and RT fires. Click the
+   left stick while moving forward to sprint.
+5. Hold the **White button** (LB on the Windows profile) to open the equipment
+   wheel in your half of the screen. Keep the right stick pointed at an item
+   as you release White to equip it. Right selects grenades and down selects
+   the jump pad. Owned guns use the upper and left sectors. B cancels.
 
-Complex is the supported arena in this build. Selecting co-op campaign or
-online multiplayer displays an unavailable message. The Windows GE32
-extension has a separate binary interface.
+The Xbox target builds the look response, wheel selection, layout and artwork
+from this fork's sources in `mods/the-finals/`. The nxdk adapter reads each
+physical controller separately and applies equipment and movement to that
+player in the native game. Changes to those shared sources trigger a rebuild.
+Changes to Windows-only hooks need a corresponding native Xbox implementation.
+
+Complex supports two-player local play. The Xbox build currently covers the
+controls above and jump-pad placement and launch. Mantling, slides, quick
+slap, hit bars, jump-pad visuals, co-op and online play still need native
+Xbox support.
 
 ### Bring Windows upstream changes into the fork
 

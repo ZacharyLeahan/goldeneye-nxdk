@@ -10,6 +10,7 @@ out.mkdir(parents=True, exist_ok=True)
 
 def emit(name, source):
     path = out / name
+    path.parent.mkdir(parents=True, exist_ok=True)
     if not path.is_file() or path.read_text() != source:
         path.write_text(source)
 
@@ -20,7 +21,7 @@ def adapt(source, before, after):
     return source.replace(before, after)
 
 
-for unit in ("lv", "spectrum", "image_bank", "objecthandler", "initunk_005450", "loadobjectmodel", "front"):
+for unit in ("lv", "spectrum", "image_bank", "objecthandler", "initunk_005450", "loadobjectmodel", "front", "bondview2"):
     src = (repo / f"src/game/{unit}.c").read_text()
     # COFF has no ELF weak aliases. Alias the references within the original TU.
     src = re.sub(r'^#pragma weak (\w+) = (\w+)$', r'#define \1 \2', src, flags=re.M)
@@ -31,6 +32,13 @@ for unit in ("lv", "spectrum", "image_bank", "objecthandler", "initunk_005450", 
         # Start the downstream boot sequence inside the normal game scheduler.
         src = adapt(src, "menu_update = MENU_FILE_SELECT;",
                     "menu_update = MENU_RAREWARE_LOGO;")
+    if unit == "bondview2":
+        entry = "void MoveBond(s8 stick_x, s8 stick_y, u16 buttons, u16 oldbuttons)"
+        src = adapt(src, entry, '#include "port/xbox/core/finals_game.inc"\n\n' + entry)
+        src = adapt(src, "bondviewProcessInput(stick_x, stick_y, buttons, oldbuttons);",
+                    "xboxFinalsProcessInput(stick_x, stick_y, buttons, oldbuttons);")
+        src = adapt(src, "bondviewUpdatePlayerY(use_stanHeight, sp390);",
+                    "xboxFinalsVertical();\n    bondviewUpdatePlayerY(use_stanHeight, sp390);")
     if unit == "front":
         # Only Complex has converted multiplayer stage data in xbox.bin.
         # Use the stock disabled-tile rendering for every unavailable arena.
@@ -97,3 +105,6 @@ rsp = adapt(rsp, "        case G_MW_SEGMENT:\n", "        case G_MW_SEGMENT:\n  
 # CI8 LoadBlock can exceed the cropped base mip. Stop at the last base texel.
 rsp = adapt(rsp, "k < line_size_bytes; i++, k++, j++", "k < line_size_bytes && i < size_bytes; i++, k++, j++")
 emit("gfx_pc.cpp", rsp)
+
+from finals_sources import generate
+generate(repo, lambda name, source: emit("finals/" + name, source))

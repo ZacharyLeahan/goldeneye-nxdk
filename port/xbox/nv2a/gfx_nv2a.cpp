@@ -1,3 +1,4 @@
+#include "../finals_controls.h"
 // NV2A rendering backend for Perfect Dark X (Original Xbox port).
 //
 // Implements GfxRenderingAPI using NXDK's pbkit push-buffer interface.
@@ -2325,6 +2326,7 @@ static void nv2a_finish_render(void)
     while (pb_busy()) {
         /* GPU still consuming */
     }
+    xboxFinalsOverlay((uint32_t *)g_dbg_fb, g_dbg_fb_pitch, g_target_width, g_target_height);
     while (pb_finished()) {
         /* waiting on swap prepare */
     }

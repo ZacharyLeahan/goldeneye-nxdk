@@ -2,7 +2,7 @@ find_program(LLVM_LINK llvm-link REQUIRED)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/core")
 set(upstream_build "${GE}/CMakeLists.txt")
-set(adapted_units lv spectrum image_bank objecthandler initunk_005450 loadobjectmodel front)
+set(adapted_units lv spectrum image_bank objecthandler initunk_005450 loadobjectmodel front bondview2)
 foreach(unit IN LISTS adapted_units)
   list(APPEND original_sources "${GE}/src/game/${unit}.c")
   list(APPEND adapted_sources "${generated}/${unit}.c")
@@ -10,6 +10,11 @@ endforeach()
 set(core_inputs "${CMAKE_CURRENT_LIST_DIR}/prepare.py" ${original_sources}
   "${GE}/port/src/romdata.c" "${GE}/port/src/romassets_u.s"
   "${GE}/assets/animationtable_data.h" "${upstream_build}" "${GE}/port/fast3d/gfx_pc.cpp")
+set(finals_dir "${GE}/mods/the-finals")
+foreach(file weapon-wheel.c wheel-layout.h wheel-render.h retro-ui.h precision-aim.h jump-pad.h combat.h)
+  list(APPEND core_inputs "${finals_dir}/${file}")
+endforeach()
+list(APPEND core_inputs "${CMAKE_CURRENT_LIST_DIR}/finals_sources.py")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${core_inputs})
 execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/prepare.py" "${generated}"
   COMMAND_ERROR_IS_FATAL ANY)
@@ -39,7 +44,7 @@ foreach(unit random n64stubs ucode pc_netorder rzdecomp gimgfixup utils legacycr
 endforeach()
 add_library(world_ir OBJECT ${game_units} ${core_libs} ${core_units}
   ${adapted_sources} "${generated}/cart_fixups.c" core/resources.c core/sequence.c)
-target_include_directories(world_ir PRIVATE shim "${GE}" "${GE}/port/include" "${GE}/src" "${GE}/src/game"
+target_include_directories(world_ir PRIVATE "${generated}/finals" shim "${GE}" "${GE}/port/include" "${GE}/src" "${GE}/src/game"
   "${GE}/src/libultra" "${GE}/src/libultra/audio" "${SDK}/lib/sdl/SDL2/include")
 target_compile_definitions(world_ir PRIVATE ${region_flags} AVOID_UB=1 PAL=0 PORT=1 _LANGUAGE_C=1
   PORT_DRAM_V1_BASE=0x81800000u PORT_DRAM_K0_BASE=0x81800000u __XBOX__ Z_SOLO)
@@ -60,10 +65,10 @@ add_custom_command(OUTPUT "${world_obj}"
   COMMAND "${LLVM_OPT}" -passes=internalize,globaldce "-internalize-public-api-list=${exports}" "${generated}/all.bc" -o "${generated}/game.bc"
   COMMAND "${CMAKE_C_COMPILER}" -O2 -c "${generated}/game.bc" -o "${world_obj}"
   DEPENDS world_ir $<TARGET_OBJECTS:world_ir> COMMAND_EXPAND_LISTS VERBATIM)
-add_executable(world main.cpp core/settings.c controllers.c "${generated}/cart_symbols.c"
+add_executable(world main.cpp core/settings.c controllers.c finals_controls.cpp "${generated}/cart_symbols.c"
   "${world_obj}" nv2a/gfx_nv2a.cpp "${generated}/gfx_pc.cpp" "${GE}/port/fast3d/gfx_cc.cpp")
 target_compile_features(world PRIVATE cxx_std_20)
-target_include_directories(world PRIVATE shim "${GE}" "${GE}/port/include" "${GE}/port/fast3d"
+target_include_directories(world PRIVATE "${generated}/finals" shim "${GE}" "${GE}/port/include" "${GE}/port/fast3d"
   "${GE}/port/xbox" "${SDK}/lib/sdl/SDL2/include")
 target_compile_definitions(world PRIVATE ${region_flags} AVOID_UB=1 PAL=0 PORT=1 _LANGUAGE_C=1
   PORT_DRAM_SIZE=0 Z_SOLO __XBOX__)
