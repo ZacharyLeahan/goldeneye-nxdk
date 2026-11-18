@@ -13,6 +13,10 @@ static float padCarryBlend;
 static SRWLOCK padLock=SRWLOCK_INIT;
 static PadSnapshot padSnapshot(void){PadSnapshot s;AcquireSRWLockShared(&padLock);s=padPublished;ReleaseSRWLockShared(&padLock);return s;}
 static void padStow(void){InterlockedExchange(&padCarrying,0);gadget.valid=0;FN(void(*)(int,int),0x1000+458624)(0x40000000,1);}
+static int padSuspendForSlap(void){
+ if(!padCarrying)return 0;
+ padStow();padCarryBlend=0;return 1;
+}
 static void padEquip(void){if(!jumpAllowed()||slap.phase)return;InterlockedExchange(&padCarrying,1);sprintLatched=sprintOn=0;sprintBlend=0;InterlockedExchange(&slapRequests,0);FN(void(*)(int,int),0x1000+458624)(0x40000000,0);}
 static void padContext(void){
  int stage=*(int*)(base+0x303000+211452),timer=*(int*)(base+0x303000+211432);
@@ -38,9 +42,9 @@ static void padPreview(void){
 }
 static void padBefore(unsigned short*buttons,unsigned short*oldbuttons){
  padContext();if(InterlockedExchange(&padCancelRequest,0))padStow();
- if(padCarrying){*buttons&=~(0x2000|0x10|0x20);*oldbuttons&=~(0x2000|0x10|0x20);sprintLatched=0;sprintBlend=0;InterlockedExchange(&slapRequests,0);padPreview();}
+ if(padCarrying){*buttons&=~(0x2000|0x10|0x20);*oldbuttons&=~(0x2000|0x10|0x20);sprintLatched=0;sprintBlend=0;padPreview();}
  if(padTriggerBlock){*buttons&=~0x2000;*oldbuttons&=~0x2000;}
- if(InterlockedExchange(&padPlaceRequest,0)&&padCarrying&&jumpAllowed()&&!openWheel){
+ if(InterlockedExchange(&padPlaceRequest,0)&&padCarrying&&jumpAllowed()&&!openWheel&&!slapRequests){
   padPreview();if(gadget.valid){gadget.position=gadget.preview;gadget.placed=1;gadget.cooldown=0;gadget.deploys++;padStow();if(logfile){fprintf(logfile,"pad placed=%d at %.2f %.2f %.2f\n",gadget.deploys,gadget.position.x,gadget.position.y,gadget.position.z);fflush(logfile);}}
  }
 }
@@ -61,11 +65,14 @@ static void padBeforeVertical(void){
 }
 /* Find actual static support under an un-navigable aperture. A distant
  * navigation anchor must never create an invisible floor under the player. */
-static int padBackgroundFloor(float x,float foot,float z,float*height){
- if(!collisionPrepareBox((JumpVec){x,foot-2048,z},(JumpVec){x,foot+.5f,z}))return 0;
+static int backgroundFloorBetween(float x,float z,float low,float high,float *height){
+ if(!collisionPrepareBox((JumpVec){x,low,z},(JumpVec){x,high,z}))return 0;
  int total=*(int*)(base+0x228000+4208);float scale=*(float*)(base+0x228000+4252),best=-INFINITY;if(total<1||total>2048||!isfinite(scale)||scale<=0)return 0;
- JumpVec a={x,foot+.5f,z},b={x,foot-2048,z};for(int room=1;room<total;room++){if(!*(void**)(base+0x303000+27264+room*0x68+0x40))continue;JumpHit hit={0};if(FN(int(*)(JumpVec*,JumpVec*,int,JumpHit*),0x1000+13744)(&a,&b,room,&hit)){float y=hit.position.y/scale;if(isfinite(y)&&y<=foot+.6f&&y>=foot-2048&&y>best)best=y;}}
+ JumpVec a={x,high,z},b={x,low,z};for(int room=1;room<total;room++){if(!*(void**)(base+0x303000+27264+room*0x68+0x40))continue;JumpHit hit={0};if(FN(int(*)(JumpVec*,JumpVec*,int,JumpHit*),0x1000+13744)(&a,&b,room,&hit)){float y=hit.position.y/scale;if(isfinite(y)&&y<=high+.1f&&y>=low&&y>best)best=y;}}
  if(!isfinite(best))return 0;*height=best;return 1;
+}
+static int padBackgroundFloor(float x,float foot,float z,float *height){
+ return backgroundFloorBetween(x,z,foot-2048,foot+.5f,height);
 }
 static int padTryAirborne(JumpVec*to,void**tile,int native){
  if(!gadget.flight||NUMBER!=localIndex()||!jumpAllowed())return native;
@@ -133,7 +140,7 @@ static void padPoll(void){
  if(padCarrying&&s.allowJump&&!openWheel&&getButton(pad,1))InterlockedExchange(&padCancelRequest,1);
 }
 static void (*padOriginalGunRender)(void**);
-static void padGunRender(void**gdl){if((padCarrying||padCarryBlend>.05f)&&NUMBER==localIndex()&&jumpAllowed())return;padOriginalGunRender(gdl);}
+static void padGunRender(void**gdl){if((mantleBusy||padCarrying||padCarryBlend>.05f)&&NUMBER==localIndex()&&jumpAllowed())return;padOriginalGunRender(gdl);}
 static int installPadGunHook(void){
  unsigned char expected[]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x57,0x56,0x53,0x48,0x81,0xec,0xc8,0,0,0};
  unsigned char*target=(void*)(base+0x1000+435024);if(memcmp(target,expected,19))return 0;

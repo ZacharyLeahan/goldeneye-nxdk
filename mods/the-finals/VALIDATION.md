@@ -267,3 +267,71 @@ Thirty isolated native menu runs passed: 2, 3 and 4 local players at 640x480, 96
 The negative control GE32_PORTRAIT_BASELINE=1 reproduces the old rendering and fails the head/border visibility check. Framebuffer captures were visually reviewed. These are local menu fixtures, not cross-PC lobby tests.
 
 GE32_CHARACTER_TEST=1 enables the native fixture in a separate prepared runtime; GE32_CHARACTER_PLAYERS=2..4 selects its layout and GE32_CHARACTER_VISUAL=1 saves ignored framebuffer captures. It replaces native input getters and masks external input only in the opted-in process, then exits on success/failure. Keep test flags unset in normal play. Startup revision: character-portraits-v5.
+
+
+## Mantle reference and Windows fixture
+
+Both November 18 OBS clips run at 60 fps. Frame numbers start at zero.
+
+| Clip and event | Visible timing |
+| --- | --- |
+| 06-51-23, yellow ledge | A lights on frame 88 and is off on 97. The reaching hand is visible around frames 98–101, about 0.17–0.22 s after the press. The player clears the lip and subsequently drops back. This gives a useful grab cue but an uncertain grounded frame. |
+| 06-52-23, awning | A shows presses on frames 1589, 1601 and 1612. The hands reach around frames 1617–1621. The top fills the lower view around 1647–1655, roughly 0.43–0.63 s after the grab. First-person footage gives only an approximate landing cue. |
+| Movement and firing | The camera and stick can move during the animation. Neither clip isolates the first accepted steering input or shot. The 20-frame hold starting at frame 2135 is a different approach. It does not establish a hold advantage at the same ledge. |
+
+The short clip supports a released tap. Its exact distance from the wall is unknown. GE32 uses a 300 ms input window, an earliest grab at 133 ms, a 32-tick climb and steering/fire handoff at landing as tuning choices. Embark also describes some windows as intentionally unavailable for vaulting in the [12.0 update](https://www.reachthefinals.com/patchnotes/12-00).
+
+Run a prepared offline Windows copy with `GE32_MANTLE_TEST=1` and `GE32.exe -level_34`. The fixture uses the Facility collision geometry, A input adapter, simulation hooks, debug readout and native weapon magazine. It writes its observations to `weapon-wheel.log` and captures the readout in `mantle-debug.bmp`. Tap, hold and a start 27 units farther back climb the same 80-unit step. A glancing pass and a tall wall leave the native jump in control. The final case increases standing body height under the real ceiling to make the same landing too short. The approach still permits a jump, the ledge is found and clearance fails. All six cases require one takeoff. The firing case checks the magazine throughout the climb and after landing.
+
+## Multiplayer Complex mantle checks
+
+Set `GE32_MANTLE_TEST=complex` and start the Windows game without a level argument. The fixture opens Complex practice (stage 31), starts each approach on the map floor, and drives forward and A through the normal movement hooks. A pass requires one takeoff, a completed pull-up, and a stable landing on the expected upper floor near the planned destination. The last case requires an ordinary jump and grounded recovery.
+
+| Approach | Rise in game units | Input |
+| --- | ---: | --- |
+| Ramp side, higher start | 110 | Tap |
+| Ramp side, lower start | 151 | Hold |
+| Upper walkway, opposite ends | 281 each | Tap / hold |
+| Raised landing from floor | 281 | Tap |
+| Lower pit to rim | 281 | Hold |
+| Open floor | 0 | Tap |
+
+From the flat floor, begin the jump before running underneath an overhanging walkway. The extended hand reach is measured from the airborne feet. The body still has to clear the lip and fit on the upper floor.
+
+For the zero-bot local match, use `GE_STARTMP=2,2`, `GE_MPVIRT=1`, and `GE32_SINGLEVIEW=1`. Use `Input.MPMode=1` in the test configuration to assign the physical controller to player one. Add `GE32_MANTLE_TEST=complex` and `GE32_COMPLEX_PAD_REPLAY=1` for the automated regression. It launches from the reported pad position, waits for a supported landing, then exercises all ten ledge and open-floor cases with the pad still deployed. For manual play, omit the two test variables. Set `GE32_MANTLE_TRACE=1` to flush the simulation tick, position, and facing to `weapon-wheel.log` at each press, grab, landing, and interrupted climb.
+
+The [all-level Windows mantle results](MANTLE-LEVEL-RESULTS.md) give the tested approaches and landing outcomes for all 40 practice and campaign setups.
+
+## Airborne A re-press
+
+On the multiplayer Complex walkway, the previous build missed two approaches when A was released after takeoff and pressed again near the lip. With the same fixture, the updated build recorded the second press on step 57, grabbed on step 58, and landed on step 89 on both approaches. Each recorded one takeoff. A second press on open floor recorded one takeoff and zero grabs. The earlier tap, hold and pit cases also passed. Run these checks with GE32_MANTLE_TEST=complex.
+
+A separate Temple practice run jumped uphill toward the upper floor near X 4640, Z 1320. Four second-press timings finished the climb at Y 468.8. This check covers the ramp lip. The precise ledge in the player screenshot was not identified. The Facility six-case regression and the eight-jump real-ceiling fixture also passed.
+
+## Xbox right-stick melee
+
+Set GE32_R3_TEST=1 in an isolated Windows runtime and launch GE32 without level arguments. The fixture opens Complex practice and attaches an SDL virtual gamepad. It sets the actual right-stick button, leaving the game to poll it through its usual input path. Every accepted click must yield one native palm strike and restore the original equipment and ammunition.
+
+Two runs passed all five cases: fists, a partially loaded pistol, a readied grenade, a carried jump pad over the grenade, and a fresh click after a mantle. The pistol and grenade cases use short taps. Holding R3 on a mantle allowed the climb to finish and a release and new click then attacked. The pistol case reduced a nearby practice opponent from 1.000 to 0.938 health, with one confirmed hit. The previous DLL produced zero strikes with a readied grenade under the controller test.
+
+## All-level mantle replays
+
+The [Windows route results](MANTLE-ROUTE-RESULTS.md) cover all 20 multiplayer setups and all 20 missions. The checked-in route manifest includes the ten approaches to the striped Facility barrier.
+
+## Stack upper walkway controller replay
+
+The original all-level survey sampled the lower ramp in Stack. It missed the grated upper walkway around the green-walled atrium. On the original build, a walk from an ordinary multiplayer spawn reproduced the failure. Both A presses registered, the upper floor was 286.36 units high, and the ledge readout stayed negative as Bond passed under the grate. The geometry supplies a walkable top and a collision surface that end at the same edge. Its thin rim has no vertical wall at the height of the hand probes.
+
+The detector now checks for the end of the native floor and collision surface at both hand positions when the usual wall probe misses. Their edge distances must agree closely enough for a facing approach. The standing footprint, climb path and landing still undergo the regular clearance checks.
+
+In the Windows game, an SDL virtual Xbox controller drove Bond from a normal spawn to the atrium with ordinary forward, turning and A input. No spawn override, player placement or simulated jump request was used on this walkthrough. Bond landed on all four sides of the upper walkway in the same match. A separate captured run recorded takeoff, a second press 21 simulation ticks later, a grab attributed to that press and landing 31 ticks after the grab. The [gameplay recording](build/stack-controller-walkthrough/stack-controller.gif) shows the approach through the turn on the upper floor.
+
+Twenty fixed approaches to those four edges failed on the prior DLL and passed on the updated DLL. They are now part of the standard MP-6 regression, with five start distances per edge. The full Stack suite recorded 33 passes and one miss on the longer lower-ramp approach. Its open-floor jump, wall, glancing and roof controls passed.
+
+The 40-setup survey recorded 483 passes, 62 misses and 32 skips. Every setup had a verified landing. The stricter airborne second-A regression passed in 39 setups on the first run and in multiplayer Egyptian on an unchanged repeat. The R3 regression recorded four successful melee cases and a missed climb setup on its first run. Its unchanged repeat passed all five. The six dedicated Facility cases, ten Complex cases following jump-pad use, and eight moving native jumps also passed. Native logs, including the misses, are in `build/stack-controller-walkthrough/`. Gameplay DLL SHA-256 is `725a000a34acc158f9f1c0550ed4071caa925306aa0e4bf5fa10fb19671bcf4c`.
+
+## One-player co-op
+
+In the Windows client, a virtual SDL controller highlighted **Start alone**, selected Bond, moved 333.8 world units and jumped in Runway on Secret Agent. The native host-abort action returned to Mission Options with the connection closed and the roster reset to zero. The same process then repeated the complete sequence. Facility loaded on 00 Agent with one active co-op player. Two Windows clients on a separate regular loopback host both entered Runway with the expected local slots, a two-person roster and zero bots.
+
+For the repeated single-controller run, compile the extension in an isolated prepared runtime with `-DGE32_SOLO_COOP_PAD_TEST` and keep the original `ge32relay.exe` beside the game. Disconnect physical controllers or disable the physical SDL joystick backends in the test process so the virtual controller occupies seat one. The test chooses Runway through the native mission picker, drives Mission Options and character selection using the controller, then exercises the native host-abort action after each movement check. Its successful process exit verifies both sessions. The production binary omits this driver.

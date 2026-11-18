@@ -5,9 +5,10 @@
 #define PP(off) (*(void**)((unsigned char*)CURRENT+(off)))
 typedef struct {float x,y,z;} JumpVec;
 typedef struct {JumpVec position,normal;void*v[4];short flags[4];} JumpHit;
-static volatile LONG pendingJump;
+static volatile LONG pendingJump,mantleBusy;
 static int jumpAHeld,jumpActive,jumpCount,ceilingStops;
 static float jumpCooldown,jumpOriginFloor;
+static int jumpTakeoffTick;
 static unsigned short jumpTestMotion;
 static void *jumpPlayer;
 static void (*originalVertical)(int,float);
@@ -19,7 +20,8 @@ static int jumpAllowed(void){
  !FN(int(*)(void),0x1000+1453264)()&&!FN(int(*)(void),0x1000+1338832)()&&!FN(int(*)(void),0x1000+1212864)()&&!FN(int(*)(void),0x1000+1193040)();
 }
 static unsigned char jumpA(unsigned char raw,int allowed,volatile LONG*latch){
- if(raw&&!jumpAHeld&&allowed){InterlockedExchange(latch,0);InterlockedExchange(&pendingJump,1);}
+ if(raw&&!jumpAHeld&&allowed){InterlockedExchange(latch,0);/* 1 is a synthetic request; a physical edge carries its simulation tick. */
+  InterlockedExchange(&pendingJump,2+*(int*)(base+0x303000+211432));}
  jumpAHeld=raw!=0;
  return allowed?0:raw;
 }
@@ -59,11 +61,31 @@ static float jumpCeiling(float top){
  for(int ray=0;ray<17;ray++){
   float ox=0,oz=0;if(ray){float angle=(ray-1)*.3926990817f;ox=31*cosf(angle);oz=31*sinf(angle);}
   JumpVec from={x+ox,foot+.25f,z+oz},to={from.x,fmaxf(top,foot+head+4),from.z};
+  /* On a ramp, the uphill toe may start inside the walking surface.
+   * Trace above the connected native floor there, keeping the ray on the
+   * approach side of walls and disconnected overhead platforms. */
+  float support=-INFINITY;
+  {
+   void *toeTile=tile;
+   if((!ray||FN(int(*)(void**,float,float,float,float),0xd6870)(&toeTile,x,z,from.x,from.z))&&toeTile){
+    float toe=FN(float(*)(void*,float,float),0x1000+879136)(toeTile,from.x,from.z);
+    if(isfinite(toe)&&toe<=foot+48.f){support=toe;from.y=fmaxf(from.y,toe+.5f); }
+   }
+  }
   for(int r=0;r<total;r++){
    if(!*(void**)(rooms+r*0x68+0x40))continue;
    JumpHit hit={0};
    if(FN(int(*)(JumpVec*,JumpVec*,int,JumpHit*),0x1000+13744)(&from,&to,r,&hit)){
-    float y=hit.position.y/scale;if(isfinite(y)&&y>from.y-.5f&&y<ceiling)ceiling=y;
+    float y=hit.position.y/scale;
+    /* The rendered walking surface can sit slightly above its navigation
+     * tile. Only skip an upward-facing hit adjacent to that connected floor.
+     * Trace again in the same room so a roof above it still stops the jump. */
+    if(hit.normal.y>0&&isfinite(y)&&fabsf(y-support)<=12.f&&y>=from.y-.5f&&y<to.y){
+     JumpVec above={from.x,y+.5f,from.z};
+     if(!FN(int(*)(JumpVec*,JumpVec*,int,JumpHit*),0x1000+13744)(&above,&to,r,&hit))continue;
+     y=hit.position.y/scale;
+    }
+    if(isfinite(y)&&y>from.y-.5f&&y<ceiling)ceiling=y;
    }
   }
   JumpVec position,normal,dynamicFrom=from;dynamicFrom.y=foot+32;
@@ -73,20 +95,44 @@ static float jumpCeiling(float top){
  }
  return ceiling;
 }
+static void mantlePress(int tick);
+static void mantleContext(void);
+static int mantleVertical(int*,float*);
+static int jumpStandingOnFloor(float foot,float ground,float velocity){
+ if(fabsf(velocity)>=.6f)return 0;
+ if(fabsf(foot-ground)<1.5f)return 1;
+ /* Native walking eases the feet up to the new tread on stairs and slopes.
+  * Accept that lag only below the current supported floor, never above a drop. */
+ void *tile=PP(1856);
+ if(!tile||foot>=ground||ground-foot>32.f||
+    !FN(int(*)(void*,float,float),0xd5e10)(tile,PF(1864),PF(1872)))return 0;
+ float surface=FN(float(*)(void*,float,float),0x1000+879136)(tile,PF(1864),PF(1872));
+ return isfinite(surface)&&fabsf(surface-ground)<3;
+}
 static void jumpBeforeVertical(void){
  if(jumpPlayer!=CURRENT){jumpPlayer=CURRENT;jumpActive=0;jumpCooldown=0;InterlockedExchange(&pendingJump,0);}
  float dt=*(float*)(base+0x303000+211436);if(!isfinite(dt)||dt<0)dt=0;
  jumpCooldown=fmaxf(0,jumpCooldown-dt);
  int requested=InterlockedExchange(&pendingJump,0);
+ int pressTick=requested>1?requested-2:-1;
  if(!jumpAllowed()){if(PI(256)||*(int*)(base+0x303000+65912))jumpActive=0;return;}
  float ground=PF(144),foot=PF(140),velocity=PF(152);
  if(!isfinite(ground)||!isfinite(foot)||!isfinite(velocity))return;
- int grounded=fabsf(foot-ground)<1.5f&&fabsf(velocity)<.6f;
- if(requested&&!jumpActive&&grounded&&jumpCooldown<=0){
+ if(mantleBusy)return;
+ if(requested)mantlePress(pressTick);
+ if(requested&&!jumpActive&&jumpCooldown<=0&&jumpStandingOnFloor(foot,ground,velocity)){
+  /* Horizontal movement has already advanced the walking tile this tick.
+   * Start above its current height so native ramp smoothing releases gravity. */
+  float takeoffFloor=ground;
+  if(PP(1856)){
+   float surface=FN(float(*)(void*,float,float),0x1000+879136)(PP(1856),PF(1864),PF(1872));
+   if(isfinite(surface)&&surface>ground&&surface-ground<=8.f)takeoffFloor=surface;
+  }
   float head=fmaxf(PF(13940),120.f)+14.f;
-  float ceiling=jumpCeiling(ground+head+70.f);
-  if(ceiling>ground+head+5.f){
-   jumpOriginFloor=ground;PI(184)=2;PF(140)=fmaxf(foot,ground)+.05f;PF(152)=getenv("GE32_JUMP_CEILING_TEST")?18.f:5.8f;
+  float ceiling=jumpCeiling(takeoffFloor+head+70.f);
+  if(ceiling>takeoffFloor+head+5.f){
+   jumpOriginFloor=takeoffFloor;PI(184)=2;PF(140)=fmaxf(foot,takeoffFloor)+.05f;PF(152)=getenv("GE32_JUMP_CEILING_TEST")?18.f:5.8f;
+   jumpTakeoffTick=*(int*)(base+0x303000+211432);
    jumpActive=1;jumpCount++;jumpCooldown=8;
    if(logfile){fprintf(logfile,"jump takeoff=%d ground=%.2f ceiling=%.2f\n",jumpCount,ground,ceiling);fflush(logfile);}
   }else if(logfile){fprintf(logfile,"jump blocked: insufficient standing headroom\n");fflush(logfile);}
@@ -119,7 +165,7 @@ static void verticalHook(int useHeight,float offset){
   int introTest=getenv("GE32_INTRO_TEST")&&!jumpAllowed();
   float oldFoot=PF(140),oldVelocity=PF(152);int oldCount=jumpCount;
   if(introTest)InterlockedExchange(&pendingJump,1);
-  padBeforeVertical();jumpBeforeVertical();
+  mantleContext();padBeforeVertical();jumpBeforeVertical();
   if(introTest){
    if(PF(140)!=oldFoot||PF(152)!=oldVelocity||jumpCount!=oldCount||pendingJump){if(logfile){fprintf(logfile,"FAIL intro jump changed physics or retained request\n");fflush(logfile);}ExitProcess(2);}
    introTestBlocks++;
@@ -127,7 +173,7 @@ static void verticalHook(int useHeight,float offset){
    if(!introTestBlocks||jumpCount){if(logfile){fprintf(logfile,"FAIL intro test lacked blocked intro ticks\n");fflush(logfile);}ExitProcess(2);}
    introTestPassed=1;if(logfile){fprintf(logfile,"PASS intro: %d queued jump attempts consumed without physics changes; gameplay starts with no queued jump\n",introTestBlocks);fflush(logfile);}
   }
-  dropPrepareVertical(&useHeight,&offset);padPrepareVertical(&useHeight,&offset);
+  if(!mantleVertical(&useHeight,&offset)){dropPrepareVertical(&useHeight,&offset);padPrepareVertical(&useHeight,&offset); }
  }
  originalVertical(useHeight,offset);
  if(local){jumpAfterVertical();dropAfterVertical();padAfterVertical();jumpTestAfter();}
@@ -143,12 +189,12 @@ static int installJumpHook(void){
 }
 static void testJumpInput(void){
  volatile LONG latch=1;pendingJump=0;jumpAHeld=0;
- if(jumpA(1,1,&latch)||latch||pendingJump!=1)ExitProcess(3);
+ if(jumpA(1,1,&latch)||latch||!pendingJump)ExitProcess(3);
  pendingJump=0;if(jumpA(1,1,&latch)||pendingJump)ExitProcess(3);
- jumpA(0,1,&latch);jumpA(1,1,&latch);if(pendingJump!=1)ExitProcess(3);
+ jumpA(0,1,&latch);jumpA(1,1,&latch);if(!pendingJump)ExitProcess(3);
  pendingJump=0;jumpA(0,0,&latch);if(jumpA(1,0,&latch)!=1||pendingJump)ExitProcess(3);
  jumpA(0,0,&latch);jumpA(1,0,&latch);jumpA(1,1,&latch);if(pendingJump)ExitProcess(3);
- jumpA(0,1,&latch);jumpA(1,1,&latch);if(pendingJump!=1)ExitProcess(3);
+ jumpA(0,1,&latch);jumpA(1,1,&latch);if(!pendingJump)ExitProcess(3);
  jumpA(0,0,&latch);jumpAHeld=0;pendingJump=0;
  if(logfile){fprintf(logfile,"PASS: A queues once, clears crouch, holding does not repeat, release rearms, menus retain A\n");fflush(logfile);}
 }

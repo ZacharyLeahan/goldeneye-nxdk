@@ -8,6 +8,16 @@ Windows 64-bit only. Requires the official GE32 fan release **2026.11.07 e8859fe
 
 The base PC-port source in this repository does not contain GE32 multiplayer. Building the upstream port does not build the extension automatically.
 
+## Starting co-op alone
+
+Open the co-op campaign, select a mission and difficulty, then highlight **Start alone** on Mission Options and press **A**. Choose a character on the next screen. This launches a one-player co-op match on a loopback relay. The relay adds zero bots. Ending the session returns you to Mission Options so you can pick another mission. The original Start tab is available for hosting a group. The stock `ge32relay.exe` must be beside `GE32.exe`.
+
+## Mantling
+
+Move toward a raised ledge and tap A. The jump starts immediately. The same press can catch a ledge during the first 300 ms, including after release. Keep the left stick forward to approach. Holding A uses the same window. To catch a ledge later in the jump, keep moving forward, release A and press it again near the lip. That press opens a fresh 300 ms grab window. Once Bond has risen for eight ticks, the grab can start immediately. A miss continues the existing jump. The target needs a facing edge, room for the standing body along the climb, and supported footing at the landing. A narrow barrier can be vaulted when the floor beyond it supports the player. Low steps and a clear barrier directly in front of Bond can catch earlier. Steering and firing return at the end of the pull-up. The camera follows the local player's physical position.
+
+F8 toggles the press tick, elapsed milliseconds, ledge and clearance results, and the jump/mantle decision. Clearance reads NA until a ledge is found. Adjust the input window, earliest grab, reach, height and climb duration at the top of `mantle.h`. Time values use the game's 60 Hz clock.
+
 ## Build and install
 
 Install Python 3 and Zig 0.13.0 separately. Extract the supported GE32 Windows release, supply your own US ROM, launch it once to initialize settings, and close the game.
@@ -102,9 +112,9 @@ Cross-PC replication is not yet verified. All physics work stays in the local si
 
 Click the left stick while moving forward to toggle a smooth ramp to the calibrated sprint pace. This scales the native forward/strafe movement scalars on the simulation thread; it does not teleport the player or replace collision handling. Stopping, backing up, aiming, firing, crouching, opening the wheel, or starting a slap cancels sprint. Sprint is unavailable in menus, cinematics, tank mode, match freezes, or death. There is no stamina system or slide mechanic.
 
-Click the right stick for a single native slapper attack. The simulation temporarily selects the palm model and fist item, runs the engine's existing slap animation/strike dispatch, and restores both hands, partially loaded magazines, reserve ammunition, and previous-weapon history. Sniper ownership does not substitute a rifle-butt animation. A wheel selection made during the slap is deferred until the slap ends. Holding the stick button does not repeat attacks.
+Click the right stick for a single native slapper attack. The simulation temporarily selects the palm model and fist item, runs the engine's existing slap animation/strike dispatch, and restores both hands, partially loaded magazines, reserve ammunition, and previous-weapon history. Sniper ownership does not substitute a rifle-butt animation. A wheel selection made during the slap is deferred until the slap ends. A held click produces one strike. A ready grenade stays equipped and retains its ammunition. When carrying the jump pad, Bond puts it away for the strike and brings it back afterward. During a mantle, release R3 and click again after landing.
 
-The slap is accepted from ready/fire/recoil states; a weapon transition or reload can temporarily prevent starting it. Pause freezes the action phase; death/tank/stage changes clear the temporary action state. Cross-PC replication and real-target damage still need a multiplayer/playtest pass; automated checks verify native strike dispatch without a spawned target.
+The slap is accepted from ready/fire/recoil states; a weapon transition or reload can temporarily prevent starting it. Pause freezes the action phase; death/tank/stage changes clear the temporary action state. The SDL right-stick regression also checks damage against a nearby target in local Complex practice. Cross-PC replication remains unverified.
 
 Set GE32_COMBAT_TEST=1 with -level_09 (Bunker1) only for the offline sprint/slap integration harness. The forced-dual setup in Temple practice has a pre-existing native texture-loading crash; use the mission fixture for the full six-case check. It supplies test weapons and ammunition, runs movement and strike cases, then exits. Never enable it for normal play. GE32_STAND_TEST=1 also checks left/right-stick button press/hold/release edges before the game starts.
 
