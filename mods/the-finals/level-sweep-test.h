@@ -103,5 +103,5 @@ static void sweepAfter(void){
 }
 static void sweepLaunch(void){
  if(!getenv("GE32_LEVEL_SWEEP"))return;static ULONGLONG started;if(!started)started=GetTickCount64();if(GetTickCount64()-started>120000){fprintf(logfile,"FAIL sweep: wall-clock deadline phase=%d tick=%d allowed=%d\n",sweep.phase,sweep.tick,CURRENT?jumpAllowed():0);fflush(logfile);ExitProcess(2);}
- static int frames,launched;if(getenv("GE32_SWEEP_PRACTICE")&&!launched&&++frames==60){launched=1;FN(void(*)(int,int),0x1000+999872)(atoi(getenv("GE32_SWEEP_PRACTICE")),0);}
+ static int frames,launched;if(getenv("GE32_SWEEP_PRACTICE")&&!launched&&++frames==60){launched=1;FN(void(*)(int,int),0x1000+999872)(atoi(getenv("GE32_SWEEP_PRACTICE")),1); /* Target for the health fixture. */}
 }

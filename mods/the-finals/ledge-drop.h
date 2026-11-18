@@ -31,7 +31,7 @@ static int dropActorsClear(JumpVec a,JumpVec b,int*occupied){
  return 1;
 }
 /* Background engine rays are infinite; accept hits only on this segment. */
-static int dropSegmentClear(JumpVec from,JumpVec to){
+static int dropSegmentClearImpl(JumpVec from,JumpVec to,int allowRearExit){
  float dx=to.x-from.x,dy=to.y-from.y,dz=to.z-from.z,len2=dx*dx+dy*dy+dz*dz;
  if(len2<.0001f)return 1;
  if(!collisionPrepareBox((JumpVec){fminf(from.x,to.x),fminf(from.y,to.y),fminf(from.z,to.z)},(JumpVec){fmaxf(from.x,to.x),fmaxf(from.y,to.y),fmaxf(from.z,to.z)}))return 0;
@@ -43,7 +43,23 @@ static int dropSegmentClear(JumpVec from,JumpVec to){
   JumpHit hit={0};
   if(FN(int(*)(JumpVec*,JumpVec*,int,JumpHit*),0x1000+13744)(&from,&to,r,&hit)){
    float t=((hit.position.x/scale-from.x)*dx+(hit.position.y/scale-from.y)*dy+(hit.position.z/scale-from.z)*dz)/len2;
-   if(isfinite(t)&&t>.001f&&t<1.001f)return 0;
+   if(isfinite(t)&&t>.001f&&t<1.001f){
+    /* At takeoff native navigation can leave the rear of the footprint a
+     * few units inside a wall. A native-approved horizontal step away
+     * may exit that face only while the center stays on its front side. */
+    float nx=hit.normal.x,nz=hit.normal.z,n=hypotf(nx,nz);
+    float hx=hit.position.x/scale,hz=hit.position.z/scale;
+    if(!allowRearExit||n<.001f||fabsf(hit.normal.y)>n*.01f||
+       (PF(1864)-hx)*nx+(PF(1872)-hz)*nz<25.f*n||
+       dx*nx+dz*nz<=.001f*n)return 0;
+    /* Check the remainder in this room as well. Other rooms and all
+     * dynamic objects still see the complete segment. */
+    JumpVec rest={hx+dx*.0001f,from.y,hz+dz*.0001f};
+    if(t<1.f&&FN(int(*)(JumpVec*,JumpVec*,int,JumpHit*),0x1000+13744)(&rest,&to,r,&hit)){
+     float next=((hit.position.x/scale-from.x)*dx+(hit.position.z/scale-from.z)*dz)/len2;
+     if(isfinite(next)&&next>t&&next<1.001f)return 0;
+    }
+   }
   }
  }
  int occupied[64];for(int i=0;i<64;i++)occupied[i]=-1;
@@ -52,21 +68,25 @@ static int dropSegmentClear(JumpVec from,JumpVec to){
  if(!dropActorsClear(from,to,occupied))return 0;
  return !FN(int(*)(void*,JumpVec*,JumpVec*,unsigned,JumpVec*,JumpVec*,int*),0x1000+721344)(PP(200),&from,&to,0x13,&pos,&normal,occupied);
 }
+static int dropSegmentClear(JumpVec from,JumpVec to){
+ return dropSegmentClearImpl(from,to,0);
+}
 /* A circumscribed 16-point footprint covers front/back as well as sides.
  * Vertical destination probes catch a thin floor/ceiling lip between height samples. */
-static int dropBodyClear(JumpVec*to){
+static int dropBodyClearForStep(JumpVec*to,int allowRearExit){
  float len=hypotf(to->x-PF(1864),to->z-PF(1872));if(len<.001f)return 1;
  float foot=PF(140),head=fmaxf(40.f,PF(13940)+PF(188)+10.f);
  if(!collisionPrepareBox((JumpVec){fminf(PF(1864),to->x)-31,foot+.1f,fminf(PF(1872),to->z)-31},(JumpVec){fmaxf(PF(1864),to->x)+31,foot+head,fmaxf(PF(1872),to->z)+31}))return 0;
  for(int point=0;point<17;point++){
   float ox=0,oz=0;if(point){float a=(point-1)*.3926990817f;ox=31*cosf(a);oz=31*sinf(a);}
   for(int level=0;level<4;level++){
-   float y=foot+.25f+(head-.25f)*level/3.f;JumpVec a={PF(1864)+ox,y,PF(1872)+oz},b={to->x+ox,y,to->z+oz};if(!dropSegmentClear(a,b))return 0;
+   float y=foot+.25f+(head-.25f)*level/3.f;JumpVec a={PF(1864)+ox,y,PF(1872)+oz},b={to->x+ox,y,to->z+oz};if(!dropSegmentClearImpl(a,b,allowRearExit))return 0;
   }
   JumpVec lo={to->x+ox,foot+.25f,to->z+oz},hi={lo.x,foot+head,lo.z};if(!dropSegmentClear(lo,hi))return 0;
  }
  return 1;
 }
+static int dropBodyClear(JumpVec*to){return dropBodyClearForStep(to,0);}
 static float traversalFloorSupport(int*uniform){
  float support=-INFINITY,lowest=INFINITY;int present=0;
  for(int i=0;i<17;i++){float ox=0,oz=0;if(i){float angle=(i-1)*.3926990817f;ox=31*cosf(angle);oz=31*sinf(angle);}float y;void*t=floorBelow(PF(1864)+ox,PF(140)+1,PF(1872)+oz,&y);if(t&&isfinite(y)){support=fmaxf(support,y);lowest=fminf(lowest,y);present++;}}
@@ -114,7 +134,7 @@ static int dropTryStan(JumpVec*to,void**tile){
  float dx=to->x-PF(1864),dz=to->z-PF(1872),len=hypotf(dx,dz),ground=PF(144);
  if(!isfinite(len)||len<.001f||len>128||!isfinite(ground))return native;
  if(native&&!drop.active)return native;
- if(drop.active&&!dropBodyClear(to))return 0;
+ if(drop.active&&!dropBodyClearForStep(to,native&&jumpActive&&!padAirborne()))return 0;
  float lower;void*landing=floorBelow(to->x+dx/len*68.f,ground+1,to->z+dz/len*68.f,&lower);
  if(!landing||!isfinite(lower)||ground-lower<16||ground-lower>2048)return native;
  int landingRoom=FN(int(*)(void*),0x1000+883888)(landing),roomCount=*(int*)(base+0x228000+4208);
