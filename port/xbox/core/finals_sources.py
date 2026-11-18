@@ -33,6 +33,8 @@ def generate(root: Path, emit):
          "\nvoid drawSectors(float vw, float vh) {\n" + draw + "}\n")
 
     emit("finals_font.inc", section("retro-ui.h", "static const unsigned char retroGlyphs", "static float retroWidth"))
+    emit("finals_material.inc", section("jump-pad-render.h", " for(int y=0;y<32;y++)", " glPushClientAttrib"))
+    emit("finals_held.inc", section("jump-pad-render.h", "static void padHeldFace", "static void drawPad"))
     constants = section("jump-pad.h", "#define PAD_ITEM", "static volatile LONG")
     constants += section("combat.h", "#define MOVE_RUN_SCALE", "static ")
     emit("finals_constants.h", constants)

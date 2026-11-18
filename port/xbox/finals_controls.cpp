@@ -19,6 +19,9 @@ struct Wheel {
     int ids[32]{}, count = 0, choice = -1, oldCurrent = -1, requested = -1;
     bool active = false, openWheel = false, previousLB = false;
     bool cancelled = false, wheelStickEngaged = false;
+    float lastX = 0, lastY = 0;
+    Uint32 lastDirection = 0;
+    bool hasDirection = false;
     bool playing() const { return active; }
     const FinalsInventory &snapshotRead() const { return snapshot; }
     int current() const { return snapshot.current; }
@@ -135,6 +138,22 @@ struct Painter : Wheel {
         }
     }
     void centered(float x,float y,const char*s){ text(x-textWidth(s)*.5f,y,s); }
+    void drawPadHint(bool valid) {
+        const char *hint=valid?"RT PLACE   B CANCEL":"CLEAR LEVEL FLOOR REQUIRED";
+        uiScale=std::min(right/460.f,std::max(2.f/2.6f,uiScale));
+        transform={0,0,uiScale,uiScale};
+        float bottomY=bottom/uiScale-19;
+        glColor4f(.035f,.045f,.035f,.78f);
+        glBegin(GL_QUADS);
+        float end=24+textWidth(hint);
+        glVertex2f(10,bottomY-48); glVertex2f(end,bottomY-48);
+        glVertex2f(end,bottomY+6); glVertex2f(10,bottomY+6);
+        glEnd();
+        glColor4f(.89f,.87f,.69f,1);
+        text(17,bottomY-24,"JUMP PAD");
+        glColor4f(valid?.8f:1.f,valid?.94f:.55f,valid?.65f:.44f,1);
+        text(17,bottomY,hint);
+    }
 #include "finals_art.inc"
 };
 }
@@ -148,7 +167,22 @@ extern "C" void xboxFinalsReset(int slot) {
 extern "C" int xboxFinalsWheel(int slot,int active,const FinalsPad *p,const FinalsInventory *items,int *equip) {
     SDL_AtomicLock(&wheelLock);
     Wheel &w=wheels[slot]; w.active=active; w.snapshot=*items; w.requested=-1;
-    w.wheelUpdate(p->buttons&FIN_WHEEL,p->buttons&FIN_B,p->rx/32768.f,p->ry/32768.f);
+    const bool held = p->buttons & FIN_WHEEL;
+    const Uint32 now = SDL_GetTicks();
+    float x = p->rx / 32768.f, y = p->ry / 32768.f;
+    if (!w.openWheel) w.hasDirection = false;
+    // A spring-centred stick often arrives at neutral just before White comes
+    // up. Keep the last sector briefly. B and a deliberate recenter still cancel.
+    if (x*x + y*y > .28f*.28f) {
+        w.hasDirection = true;
+        w.lastDirection = now;
+        w.lastX = x;
+        w.lastY = y;
+    } else if (w.hasDirection && now - w.lastDirection <= 100) {
+        x = w.lastX;
+        y = w.lastY;
+    }
+    w.wheelUpdate(held,p->buttons&FIN_B,x,y);
     *equip=w.requested;
     bool open=w.openWheel;
     SDL_AtomicUnlock(&wheelLock);
@@ -163,7 +197,7 @@ extern "C" void xboxFinalsLook(int slot,const FinalsPad *p,float fov,float dt,fl
 }
 extern "C" void xboxFinalsOverlay(int width,int height) {
     struct CachedWheel {
-        int width, height, choice, count, grenades, ids[32];
+        int width, height, choice, count, grenades, padHint, ids[32];
     };
     static CachedWheel cached[4]{};
     static std::vector<uint32_t> scratch;
@@ -171,17 +205,21 @@ extern "C" void xboxFinalsOverlay(int width,int height) {
         Painter painter;
         SDL_AtomicLock(&wheelLock);
         bool open=wheels[i].openWheel;
-        if(open) static_cast<Wheel&>(painter)=wheels[i];
+        bool carrying=wheels[i].active && wheels[i].snapshot.current==PAD_ITEM;
+        if(open || carrying) static_cast<Wheel&>(painter)=wheels[i];
         SDL_AtomicUnlock(&wheelLock);
-        if(!open) continue;
+        if(!open && !carrying) continue;
         auto &v=painter.snapshot;
         int left=std::clamp(int(v.left*width),0,width);
         int top=std::clamp(int(v.top*height),0,height);
         int w=std::clamp(int((v.left+v.width)*width+.5f),left,width)-left;
         int h=std::clamp(int((v.top+v.height)*height+.5f),top,height)-top;
         if(w<1||h<1) continue;
-        CachedWheel key{w,h,painter.choice,painter.count,v.grenades,{}};
-        std::copy_n(painter.ids,painter.count,key.ids);
+        CachedWheel key{w,h};
+        if (open) {
+            key.choice=painter.choice; key.count=painter.count; key.grenades=v.grenades;
+            std::copy_n(painter.ids,painter.count,key.ids);
+        } else key.padHint=v.validPlacement?2:1;
         bool changed=memcmp(&key,&cached[i],sizeof(key))!=0;
         if(changed) {
             scratch.assign(w*h,0);
@@ -190,7 +228,8 @@ extern "C" void xboxFinalsOverlay(int width,int height) {
             painter.uiScale=std::min(w/1280.f,h/720.f);
             painter.transform={0,0,painter.uiScale,painter.uiScale};
             painter.lineWidth=1;
-            painter.drawSectors(w/painter.uiScale,h/painter.uiScale);
+            if (open) painter.drawSectors(w/painter.uiScale,h/painter.uiScale);
+            else painter.drawPadHint(v.validPlacement);
         }
         if(xboxDrawWheel(i,left,top,w,h,changed?scratch.data():nullptr))
             cached[i]=key;

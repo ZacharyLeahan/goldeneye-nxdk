@@ -9,13 +9,14 @@ extern float tanf(float);
 extern void gunRequestHandWeaponChange(enum GUNHAND, s32, s32);
 extern s32 get_ammo_type_for_weapon(ITEM_IDS);
 extern void bgBuildRoomVtxBounds(s32);
+extern s32 bgCheckIfRoomModelNeedsLoad(s32);
 
 typedef struct {
     struct player *owner;
-    int timer, loaded, jump, carrying, placed, sprint;
+    int timer, loaded, jump, carrying, placed, sprint, wheelOpen, validPreview, blockFire;
     unsigned previous;
     float sprintBlend, padCooldown;
-    coord3d pad;
+    coord3d pad, preview;
 } XboxLife;
 static XboxLife xboxLives[MAXCONTROLLERS];
 
@@ -38,19 +39,33 @@ static float xboxCeiling(float rise)
     float head = fmaxf(120, p->standheight) + 14;
     float scale = get_room_data_float1();
     float nearest = 1e9f;
+    float top = p->field_70 + head + rise + 5;
+    // A split-screen camera may be facing away from the launch. Prepare the
+    // collision data for every room intersecting this body sweep.
+    for (int r = 1; r < g_MaxNumRooms; ++r) {
+        s_room_info *room=&g_BgRoomInfo[r];
+        if (room->csize_primary_DL_binary <= 0 ||
+            (from.x-31)*scale > room->maxbounds.x+1 || (from.x+31)*scale < room->minbounds.x-1 ||
+            (from.z-31)*scale > room->maxbounds.z+1 || (from.z+31)*scale < room->minbounds.z-1 ||
+            p->field_70*scale > room->maxbounds.y+1 || top*scale < room->minbounds.y-1) continue;
+        if (!room->vtx_batch_bounds) {
+            bgCheckIfRoomModelNeedsLoad(r);
+            bgBuildRoomVtxBounds(r);
+            if (!room->vtx_batch_bounds) return p->field_70;
+        }
+    }
     for (int ray = 0; ray < 17; ++ray) {
         float angle = (ray - 1) * .3926990817f;
         from.x = p->field_488.collision_position.x + (ray ? 31*cosf(angle) : 0);
         from.z = p->field_488.collision_position.z + (ray ? 31*sinf(angle) : 0);
         from.y = p->field_70 + 12.5f;
         coord3d to = from;
-        to.y = p->field_70 + head + rise + 5;
+        to.y = top;
         for (int r = 1; r < g_MaxNumRooms; r++) {
             s_room_info *room = &g_BgRoomInfo[r];
-            if (!room->ptr_expanded_mapping_info || from.x*scale < room->minbounds.x-1 ||
+            if (!room->vtx_batch_bounds || from.x*scale < room->minbounds.x-1 ||
                 from.x*scale > room->maxbounds.x+1 || from.z*scale < room->minbounds.z-1 ||
                 from.z*scale > room->maxbounds.z+1) continue;
-            if (!room->vtx_batch_bounds) bgBuildRoomVtxBounds(r);
             HitThing hit;
             if (bgTestBulletHitBackground(&from,&to,r,&hit)) {
                 float y=hit.hitpos.y/scale;
@@ -61,9 +76,8 @@ static float xboxCeiling(float rise)
     return nearest-head;
 }
 
-static void xboxPlacePad(XboxLife *life)
+static int xboxPadPreview(coord3d *preview)
 {
-    if (!xboxGrounded()) return;
     coord3d at = g_CurrentPlayer->field_488.collision_position;
     coord3d dir = g_CurrentPlayer->field_488.theta_transform;
     float distance = 220;
@@ -71,17 +85,21 @@ static void xboxPlacePad(XboxLife *life)
         distance = fmaxf(75,fminf(240,(at.y-g_CurrentPlayer->field_70)/tanf(-g_CurrentPlayer->vv_verta*.01745329252f)));
     coord3d spot = at;
     spot.x += dir.x*distance; spot.z += dir.z*distance;
+    spot.y = g_CurrentPlayer->stanHeight;
+    *preview = spot;
+    if (!xboxGrounded()) return 0;
     StandTile *tile = g_CurrentPlayer->field_488.current_tile_ptr;
-    if (!walkTilesBetweenPoints_NoCallback(&tile,at.x,at.z,spot.x,spot.z) || !tile) return;
+    if (!walkTilesBetweenPoints_NoCallback(&tile,at.x,at.z,spot.x,spot.z) || !tile) return 0;
     spot.y = stanGetPositionYValue(tile,spot.x,spot.z);
-    if (fabsf(spot.y-g_CurrentPlayer->field_70)>24) return;
+    *preview = spot;
+    if (fabsf(spot.y-g_CurrentPlayer->stanHeight)>24) return 0;
     for(int i=0;i<16;i++){
         float x=spot.x+PAD_RADIUS*cosf(i*.3926990817f), z=spot.z+PAD_RADIUS*sinf(i*.3926990817f);
         StandTile *edge=tile;
         if(!walkTilesBetweenPoints_NoCallback(&edge,spot.x,spot.z,x,z) || !edge ||
-           fabsf(stanGetPositionYValue(edge,x,z)-spot.y)>3) return;
+           fabsf(stanGetPositionYValue(edge,x,z)-spot.y)>3) return 0;
     }
-    life->pad=spot; life->placed=1; life->padCooldown=0; life->carrying=0;
+    return 1;
 }
 
 static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldbuttons)
@@ -99,11 +117,15 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
     life->timer=g_GlobalTimer;
     unsigned pressed=pad.buttons & ~life->previous;
     unsigned previous=life->previous;
+    int previousFireBlocked=life->blockFire;
     life->previous=pad.buttons;
+    if (!(pad.buttons & FIN_FIRE)) life->blockFire=0;
     int active = !p->bonddead && !g_PlayerIsInTank && !g_stopPlayFlag && !g_gameOverFlag &&
         p->watch_animation_state==WATCH_ANIMATION_0x0 && !lvlGetControlsLockedFlag() &&
         disablePlayerActionsWhenPausedOrInMpMenu();
     if(!active){
+        gunSetGunAmmoVisible(0x40000000,1);
+        life->wheelOpen=0;
         xboxFinalsReset(slot);
         bondviewProcessInput(stick_x,stick_y,buttons,oldbuttons);
         return;
@@ -120,10 +142,12 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
     inventory.items[inventory.count++]=PAD_ITEM;
     inventory.grenades=get_ammo_count_for_weapon(ITEM_GRENADE);
     inventory.current=life->carrying?PAD_ITEM:getCurrentPlayerWeaponId(GUNRIGHT);
+    inventory.validPlacement=life->validPreview;
     inventory.left=getPlayer_c_screenleft()/viGetX(); inventory.top=getPlayer_c_screentop()/viGetY();
     inventory.width=getPlayer_c_screenwidth()/viGetX(); inventory.height=getPlayer_c_screenheight()/viGetY();
     int equipment;
     int selecting=xboxFinalsWheel(slot,1,&pad,&inventory,&equipment);
+    life->wheelOpen=selecting;
     if(equipment>=0){
         life->carrying=equipment==PAD_ITEM;
         if(!life->carrying){
@@ -132,22 +156,32 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
         }
     }
     int wheelInput=selecting || ((previous|pad.buttons)&FIN_WHEEL);
+    if (life->carrying) life->validPreview=xboxPadPreview(&life->preview);
+    if ((life->carrying || wheelInput) && (pad.buttons & FIN_FIRE)) life->blockFire=1;
     int native=buttons & START_BUTTON, old=oldbuttons & START_BUTTON;
     if(!wheelInput){
         if(pad.buttons&FIN_Y) native|=B_BUTTON;
         if(previous&FIN_Y) old|=B_BUTTON;
         if((pad.buttons&FIN_AIM)&&!life->carrying) native|=R_TRIG;
         if(previous&FIN_AIM) old|=R_TRIG;
-        if((pad.buttons&FIN_FIRE)&&!life->carrying) native|=Z_TRIG;
-        if(previous&FIN_FIRE) old|=Z_TRIG;
+        if((pad.buttons&FIN_FIRE)&&!life->blockFire) native|=Z_TRIG;
+        if((previous&FIN_FIRE)&&!previousFireBlocked) old|=Z_TRIG;
         if(pressed&FIN_X){attempt_reload_item_in_hand(GUNRIGHT);attempt_reload_item_in_hand(GUNLEFT);}
         if(pressed&FIN_B){
             if(life->carrying) life->carrying=0;
             else p->crouchpos=p->crouchpos==CROUCH_STAND?CROUCH_SQUAT:CROUCH_STAND;
         }
         if(pressed&FIN_A){life->jump=1;p->crouchpos=CROUCH_STAND;}
-        if((pressed&FIN_FIRE)&&life->carrying) xboxPlacePad(life);
     }
+    // Accept a new trigger squeeze on the same report as a pad selection.
+    if ((!wheelInput || equipment==PAD_ITEM) && !selecting && life->carrying &&
+        (pressed&FIN_FIRE) && life->validPreview) {
+        life->pad=life->preview;
+        life->placed=1;
+        life->padCooldown=0;
+        life->carrying=0;
+    }
+    gunSetGunAmmoVisible(0x40000000,!life->carrying);
     bondviewProcessInput(0,0,native,old);
     float lx=pad.lx,ly=pad.ly;
     float length=sqrtf(lx*lx+ly*ly);
@@ -191,3 +225,5 @@ static void xboxFinalsVertical(void)
         if(xboxCeiling(rise+2)<=p->field_70+rise+2) p->field_7C=0;
     }
 }
+
+#include "port/xbox/core/pad_render.inc"

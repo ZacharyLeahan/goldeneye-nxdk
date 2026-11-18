@@ -1,6 +1,7 @@
 """Prepare ABI-specific COFF inputs from the current upstream source checkout."""
 
 from pathlib import Path
+import json
 import re
 import sys
 
@@ -48,6 +49,31 @@ void xboxAcquireBackBuffer(void)
 """
 emit("pbkit_present.c", pbkit)
 
+# All game units must see the same slot type, including quoted includes made
+# from upstream's own source directory. Keep the PC allocation contract and
+# derive the three aliased fields from the actual i386 Model layout.
+slots_path = repo / "src/game/objecthandler.h"
+slots = slots_path.read_text()
+for before, after in (
+    ("pad04[0x0C]", "pad04[offsetof(Model, obj) - 4]"),
+    ("pad14[0x0C]", "pad14[offsetof(Model, datas) - offsetof(Model, obj) - sizeof(s32)]"),
+    ("pad28[sizeof(struct Model) - 0x28]", "pad28[sizeof(Model) - offsetof(Model, datas) - sizeof(void *)]"),
+):
+    if slots.count(before) != 2:
+        raise ValueError("Review upstream model slot layout")
+    slots = slots.replace(before, after)
+checks = []
+for typ in ("struct AnimModelSlot", "struct ModelSlot"):
+    for alias, field in (("unk02", "rwdatalen"), ("unk08", "obj"), ("unk10", "datas")):
+        checks.append(f'_Static_assert(offsetof({typ}, {alias}) == offsetof(Model, {field}), "model slot {field}");')
+    checks.append(f'_Static_assert(sizeof({typ}) == sizeof(Model), "model slot stride");')
+slots = adapt(slots, "extern struct AnimModelSlot *g_AnimModelSlots;",
+              "\n".join(checks) + "\nextern struct AnimModelSlot *g_AnimModelSlots;")
+emit("objecthandler.h", "#include <stddef.h>\n" + slots)
+emit("model_headers.json", json.dumps({"version": 0, "roots": [
+    {"type": "file", "name": str(slots_path), "external-contents": str(out.resolve() / "objecthandler.h")}
+]}))
+
 
 for unit in ("lv", "spectrum", "image_bank", "objecthandler", "initunk_005450", "loadobjectmodel", "front", "bondview2"):
     src = (repo / f"src/game/{unit}.c").read_text()
@@ -57,10 +83,14 @@ for unit in ("lv", "spectrum", "image_bank", "objecthandler", "initunk_005450", 
         # These PC paths resolve cart offsets and linker labels, independently of pointer size.
         src = src.replace("#if defined(__x86_64__)", "#if defined(PORT)")
     if unit == "lv":
+        src = adapt(src, "DL = weaponRenderTracers(DL);",
+                    "extern Gfx *xboxDrawWorldPads(Gfx *);\n            DL = xboxDrawWorldPads(DL);\n            DL = weaponRenderTracers(DL);")
         # Start the downstream boot sequence inside the normal game scheduler.
         src = adapt(src, "menu_update = MENU_FILE_SELECT;",
                     "menu_update = MENU_RAREWARE_LOGO;")
     if unit == "bondview2":
+        src = adapt(src, "gunRenderFirstPersonGunModels(&gdl);",
+                    "if (!xboxDrawHeldPad(&gdl)) gunRenderFirstPersonGunModels(&gdl);")
         entry = "void MoveBond(s8 stick_x, s8 stick_y, u16 buttons, u16 oldbuttons)"
         src = adapt(src, entry, '#include "port/xbox/core/finals_game.inc"\n\n' + entry)
         src = adapt(src, "bondviewProcessInput(stick_x, stick_y, buttons, oldbuttons);",

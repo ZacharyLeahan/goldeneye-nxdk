@@ -16,7 +16,7 @@ typedef struct {
 } FinalsPad;
 
 typedef struct {
-    int items[32], count, current, grenades;
+    int items[32], count, current, grenades, validPlacement;
     float left, top, width, height;
 } FinalsInventory;
 

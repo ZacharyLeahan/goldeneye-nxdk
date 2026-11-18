@@ -78,9 +78,14 @@ match using White, right-stick up, and A on port 2.
    toggles crouch, Y interacts, X reloads, LT aims, and RT fires. Click the
    left stick while moving forward to sprint.
 5. Hold the **White button** (LB on the Windows profile) to open the equipment
-   wheel in your half of the screen. Keep the right stick pointed at an item
-   as you release White to equip it. Right selects grenades and down selects
-   the jump pad. Owned guns use the upper and left sectors. B cancels.
+   wheel in your half of the screen. Flick the right stick toward an item and
+   release White. Right selects grenades and down selects the jump pad.
+   Owned guns use the upper and left sectors. The Xbox remembers the last
+   direction for 100 ms as the stick springs back. Holding the stick at
+   center clears the selection. B cancels immediately.
+6. With the jump pad in hand, look toward the floor. Green marks a valid
+   placement. RT deploys the pad and B stows it. On an invalid surface,
+   RT keeps the pad in hand. Either player can walk onto the deployed pad.
 
 The Xbox target builds the look response, wheel selection, layout and artwork
 from this fork's sources in `mods/the-finals/`. The nxdk adapter reads each
@@ -90,8 +95,19 @@ Changes to Windows-only hooks need a corresponding native Xbox implementation.
 
 Complex supports two-player local play. The Xbox build currently covers the
 controls above and jump-pad placement and launch. Mantling, slides, quick
-slap, hit bars, jump-pad visuals, co-op and online play still need native
+slap, hit bars, co-op and online play still need native
 Xbox support.
+
+After configuring the Xbox build, the wheel regression test can also run
+on a host with a C++20 compiler and SDL2. It compares the fork's original
+selection function with the Xbox input path and exercises the Xbox release
+window, cancel, empty grenades and independent controllers.
+
+```sh
+c++ -std=c++20 -Ibuild-xbox/core/finals $(sdl2-config --cflags) \
+    port/xbox/tests/wheel.cpp $(sdl2-config --libs) -o build-xbox/wheel-test
+build-xbox/wheel-test
+```
 
 ### Xbox frame pacing
 

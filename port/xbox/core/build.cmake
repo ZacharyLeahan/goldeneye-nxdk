@@ -9,10 +9,11 @@ foreach(unit IN LISTS adapted_units)
 endforeach()
 set(pbkit_source "${SDK}/lib/pbkit/pbkit.c")
 set(core_inputs "${pbkit_source}" "${CMAKE_CURRENT_LIST_DIR}/prepare.py" ${original_sources}
+  "${GE}/src/game/objecthandler.h"
   "${GE}/port/src/romdata.c" "${GE}/port/src/romassets_u.s"
   "${GE}/assets/animationtable_data.h" "${upstream_build}" "${GE}/port/fast3d/gfx_pc.cpp")
 set(finals_dir "${GE}/mods/the-finals")
-foreach(file weapon-wheel.c wheel-layout.h wheel-render.h retro-ui.h precision-aim.h jump-pad.h combat.h)
+foreach(file weapon-wheel.c wheel-layout.h wheel-render.h retro-ui.h precision-aim.h jump-pad-render.h jump-pad.h combat.h)
   list(APPEND core_inputs "${finals_dir}/${file}")
 endforeach()
 list(APPEND core_inputs "${CMAKE_CURRENT_LIST_DIR}/finals_sources.py")
@@ -50,6 +51,7 @@ target_include_directories(world_ir PRIVATE "${generated}/finals" shim "${GE}" "
 target_compile_definitions(world_ir PRIVATE ${region_flags} AVOID_UB=1 PAL=0 PORT=1 _LANGUAGE_C=1
   PORT_DRAM_V1_BASE=0x81800000u PORT_DRAM_K0_BASE=0x81800000u __XBOX__ Z_SOLO)
 target_compile_options(world_ir PRIVATE ${common_options} -std=gnu11 -fcommon -fms-extensions
+  "-ivfsoverlay" "${generated}/model_headers.json"
   "-idirafter${GE}/include/PR" -include port/xbox/game_headers.h
   -emit-llvm -Wno-everything)
 set_source_files_properties("${generated}/lv.c" PROPERTIES COMPILE_OPTIONS "-include;port/xbox/core/level.h")
