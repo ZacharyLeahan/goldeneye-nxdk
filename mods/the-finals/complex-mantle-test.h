@@ -52,7 +52,13 @@ static int complexPadFlight(unsigned short *buttons){
  return 1;
 }
 static void complexBefore(unsigned short *buttons){
- if(!jumpAllowed()||complexPadFlight(buttons))return;
+ if(!jumpAllowed())return;
+ /* Validate the native roster before exercising movement. A hidden bot can
+  * otherwise make a supposed zero-bot practice test pass. */
+ if(!getenv("GE_STARTMP")&&FN(int(*)(void),0xf51b0)()!=1){
+  fprintf(logfile,"FAIL Complex practice expected one player including Bond\n");fflush(logfile);ExitProcess(2);
+ }
+ if(complexPadFlight(buttons))return;
  int tick=++complexTest.tick;
  const ComplexLedge *c=&complexLedges[complexTest.index];*buttons=0;
  if(tick==30){

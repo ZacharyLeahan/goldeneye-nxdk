@@ -31,7 +31,8 @@ static void r3TestRender(void){
   if(r3SetButton(r3Joystick,8,(unsigned char)down)<0)ExitProcess(2);
   InterlockedExchange(&r3Applied,down);
  }
- if(++frames==60)FN(void(*)(int,int),0x1000+999872)(2,0);
+ /* The damage assertion needs one real opponent. */
+ if(++frames==60)FN(void(*)(int,int),0x1000+999872)(2,1);
 }
 static void r3TestBefore(unsigned short *buttons){
  if(!jumpAllowed())return;

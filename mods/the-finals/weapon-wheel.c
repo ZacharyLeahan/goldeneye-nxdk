@@ -66,11 +66,13 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "portrait-projection.h"
 #include "right-stick-test.h"
 #include "solo-coop.h"
+#include "stage-previews.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
  int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
  if(isLocal&&getenv("GE32_REGRESSION_PRACTICE")&&!getenv("GE32_PAD_LIVE_TEST")&&jumpAllowed())*(int*)(base+0x303000+618564)=1;
  if(isLocal&&getenv("GE32_DROP_TEST")){x=0;y=0;}
+ if(isLocal&&previewCaptureStage){x=y=0;buttons=oldbuttons=0;stagePreviewCamera();}
  if(isLocal){padTestBefore(&x,&y,&buttons);templeStressBefore(&x,&y,&buttons);}
  if(isLocal){combatTestBefore(&buttons);dropTestBefore(&buttons);}
  if(isLocal){wallEscapeBefore(&x,&y,&buttons);openingBefore(&x,&y,&buttons);movementTestBefore(&x,&y,&buttons);precisionAimTestBefore(&x,&y,&buttons);}
@@ -82,7 +84,6 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  if(isLocal&&getenv("GE32_MANTLE_TEST")&&jumpAllowed()){
   /* Keep physical sticks and incoming shot impulses out of scripted approaches. */
   x=y=0;oldbuttons=0;PF(432)=PF(436)=PF(440)=0;
-  if(complexMantleTestEnabled()&&!getenv("GE_STARTMP"))*(int*)(base+0x303000+618564)=1; /* Same single-player practice fixture as the level sweep. */
  }
  if(isLocal){mantleTestBefore(&buttons);mantleContext();mantle.forward=(buttons&8)!=0||PF(424)>.25f;
   if(mantle.active){buttons&=~(15|0x2000);oldbuttons&=~(15|0x2000);PF(416)=PF(424)=0;}
@@ -268,6 +269,7 @@ static void swapHook(void*w){
  if(InterlockedExchange(&openingCapture,0))padTestCapture(w,"airborne-opening.bmp");
  if(getenv("GE32_MOVEMENT_VISUAL_TEST")&&InterlockedExchange(&movementCapture,0))padTestCapture(w,"movement-slide.bmp");
  if(getenv("GE32_TEMPLE_VISUAL_TEST")&&InterlockedExchange(&templeFrameCapture,0))padTestCapture(w,"temple-camera-transition.bmp");
+ if(previewCaptureStage)stagePreviewCapture(w);
  characterTestRender(w);
  swapWindow(w);
 }
@@ -299,13 +301,17 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
   int p=installPadGunHook();
   int portal=installPortalHook();
   int portrait=installPortraitProjection();
+  const char *capture=getenv("GE32_STAGE_PREVIEW_CAPTURE");
+  if(capture&&strcmp(capture,"library")==0)previewCaptureStage=48;
+  if(capture&&strcmp(capture,"stack")==0)previewCaptureStage=46;
+  int previews=installStagePreviews();
   if(getenv("GE32_CHARACTER_TEST")&&!installCharacterTest()){fprintf(logfile,"FAIL character test hooks unsupported\n");fflush(logfile);ExitProcess(2);}
   if(!installSoloCoop()&&logfile)fprintf(logfile,"Solo co-op menu unavailable on this build.\n");
   int h=installHealthHook();
   int a=replaceImport("SDL_GameControllerGetButton",buttonHook,(void**)&getButton);
   int b=replaceImport("SDL_GameControllerGetAxis",axisHook,(void**)&getAxis);
   int c=replaceImport("SDL_GL_SwapWindow",swapHook,(void**)&swapWindow);
-  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d portal=%d portrait=%d revision=character-portraits-v5\n",g,j,d,p,h,a,b,c,portal,portrait);fflush(logfile);}
+  if(logfile){fprintf(logfile,"Weapon wheel loaded. Hooks game=%d jump=%d drop=%d gadget=%d health=%d button=%d axis=%d swap=%d portal=%d portrait=%d previews=%d revision=character-portraits-v5\n",g,j,d,p,h,a,b,c,portal,portrait,previews);fflush(logfile);}
  }
  return TRUE;
 }

@@ -21,4 +21,6 @@ if ($LASTEXITCODE -ne 0) { throw "Extension loader installation failed." }
 Copy-Item -LiteralPath $dll -Destination (Join-Path $gamePath "weapon-wheel.dll") -Force
 & $Python (Join-Path $PSScriptRoot "apply-controls.py") (Join-Path $gamePath "data/ge007.ini")
 if ($LASTEXITCODE -ne 0) { throw "Controller profile installation failed." }
+& $Python (Join-Path $PSScriptRoot "generate-stage-previews.py") $gamePath
+if ($LASTEXITCODE -ne 0) { throw "Local multiplayer preview capture failed." }
 Write-Output "Installed. Start GE32.exe from its game directory."

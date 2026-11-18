@@ -4,7 +4,7 @@ static MantleRoute route;
 static FILE *routeFile;
 static int routeTick,routeGrab,routeLand,routeCount,routeFailures,routeJumps,routeReady;
 static float routePeak,routeHead,routeRoof;
-static int routeHasLanding,routeNearTicks;
+static int routeHasLanding,routeNearTicks,routeWallCrossed;
 static JumpVec routeDestination,routePress,routeVerifiedTop;
 static int routeShotTick,routeShotDuring;
 static float routeRoofHeight(JumpVec land){
@@ -43,7 +43,7 @@ static void routeBefore(unsigned short *buttons){
   }
   padTestPlacePlayer(route.x,route.z,route.y+4,route.yaw);
   PF(396)=PF(416)=PF(420)=PF(424)=PF(432)=PF(436)=PF(440)=PF(14092)=0;PF(428)=1;
-  *(JumpVec*)(base+3238208)=(JumpVec){0};routeShotDuring=routeShotTick=routeNearTicks=0;mantle.found=mantle.clear=mantle.chose=0;
+  *(JumpVec*)(base+3238208)=(JumpVec){0};routeShotDuring=routeShotTick=routeNearTicks=routeWallCrossed=0;mantle.found=mantle.clear=mantle.chose=0;
   mantleStop();jumpCooldown=0;routeGrab=routeLand=0;routePeak=PF(140);routeJumps=jumpCount;
  }
  if(routeTick==12&&route.expect==4){
@@ -70,11 +70,15 @@ static void routeAfter(void){
   if(mantle.active)routeShotDuring=1;
   else if(!routeShotTick)routeShotTick=routeTick;
  }
+ if(routeTick>=16&&strcmp(route.name,"back-wall")==0&&PF(1872)>routePress.z+2)routeWallCrossed=1;
  if(routeTick<100)return;
  int stable=fabsf(PF(140)-PF(144))<2&&fabsf(PF(152))<.6f;
  int builtInJump=route.expect==2&&!routeGrab&&jumpCount==routeJumps+1&&fabsf(PF(140)-route.top)<4
   &&route.top>routePress.y+5&&hypotf(PF(1864)-routePress.x,PF(1872)-routePress.z)>45;
  int ok=stable&&(route.expect?(routeGrab&&routeLand>routeGrab&&mantle.clear&&fabsf(PF(140)-route.top)<4&&routeNearTicks>=8):(!routeGrab&&jumpCount==routeJumps+1&&routePeak>route.y+5));
+ /* From the same rear-wall spawn, turning to face the wall must still
+  * block forward motion throughout the jump. */
+ if(strcmp(route.name,"back-wall")==0)ok=ok&&!routeWallCrossed;
  if(route.expect==2&&stable&&builtInJump)ok=1;
  if(route.expect==3){
   PF(13940)=routeHead;
