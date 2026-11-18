@@ -96,6 +96,9 @@ static void*dropGroundedAnchor(void){
  if(foot>highest+1.5f)return NULL;return tile;
 }
 static int dropTryStan(JumpVec*to,void**tile){
+ /* The mantle advances its own swept path. Native run momentum must not
+  * push the body under the lip between two climb steps. */
+ if(mantleBusy&&NUMBER==localIndex()&&CURRENT==PLAYERS[NUMBER])return 0;
  /* Backing out of an opening can leave a lower STAN tile under feet that
   * are still supported upstairs. Restore the actual supporting layer before
   * asking native collision, so it checks the upstairs walls and portals. */
@@ -139,6 +142,14 @@ static void dropPrepareVertical(int*useHeight,float*offset){
  if(!jumpAllowed()){drop.active=0;return;}
  void*grounded=dropGroundedAnchor();if(grounded){PP(1856)=grounded;drop.active=drop.falling=0;drop.lands++;return;}
  int backOnOrigin;float support=traversalFloorSupport(&backOnOrigin);
+ /* A toe on the uphill side may be above the rising player's feet.
+  * Giving that height to native gravity pins the player to the slope
+  * with positive velocity. Use the floor below the body for this ascent. */
+ if(jumpActive&&!padAirborne()&&PF(152)>0&&support>=PF(140)-.01f){
+  float centerFloor;
+  if(floorBelow(PF(1864),PF(140)-.01f,PF(1872),&centerFloor)&&isfinite(centerFloor)&&centerFloor<PF(140))
+   support=centerFloor;
+ }
  if(backOnOrigin&&fabsf(PF(140)-support)<1.5f&&fabsf(PF(152))<.6f){float h;void*t=floorBelow(PF(1864),PF(140)+1,PF(1872),&h);if(t&&fabsf(h-support)<3)PP(1856)=t;drop.active=drop.falling=0;return;}
  if(!isfinite(support)){drop.active=0;return;}
  PF(144)=support;*useHeight=1;*offset=0;

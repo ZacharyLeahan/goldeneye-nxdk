@@ -44,12 +44,14 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "ledge-drop.h"
 #include "ledge-drop-test.h"
 #include "jump-pad.h"
+#include "mantle.h"
 #include "airborne-navigation.h"
 #include "grenades.h"
 #include "slide.h"
 #include "precision-aim.h"
 #include "jump-pad-test.h"
 #include "temple-movement-test.h"
+#include "mantle-test.h"
 #include "health-bars.h"
 #include "health-bars-test.h"
 #include "grenades-test.h"
@@ -62,6 +64,8 @@ static void publishInventory(int owner,const InventorySnapshot*s){if(owner!=loca
 #include "combat-lifecycle-test.h"
 #include "character-menu-test.h"
 #include "portrait-projection.h"
+#include "right-stick-test.h"
+#include "solo-coop.h"
 static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsigned short oldbuttons){
  if(getenv("GE32_JUMP_MOVING_TEST")&&NUMBER==localIndex()){x=0;y=0;buttons=(buttons&~15)|jumpTestMotion;}
  int isLocal=NUMBER==localIndex()&&CURRENT&&CURRENT==PLAYERS[localIndex()];
@@ -70,18 +74,29 @@ static void gameTickHook(signed char x,signed char y,unsigned short buttons,unsi
  if(isLocal){padTestBefore(&x,&y,&buttons);templeStressBefore(&x,&y,&buttons);}
  if(isLocal){combatTestBefore(&buttons);dropTestBefore(&buttons);}
  if(isLocal){wallEscapeBefore(&x,&y,&buttons);openingBefore(&x,&y,&buttons);movementTestBefore(&x,&y,&buttons);precisionAimTestBefore(&x,&y,&buttons);}
+ if(isLocal&&getenv("GE32_R3_TEST")){x=y=0;oldbuttons=0;r3TestBefore(&buttons);}
  unsigned short rawButtons=buttons;
  if(isLocal){healthBegin();if(getenv("GE32_HEALTH_TEST"))x=y=0;healthTestBefore(&buttons);}
  if(isLocal){grenadeLoadout();grenadeTestBefore(&x,&y,&buttons);}
  if(isLocal){adsMovementBefore(&x,&y,&buttons);sweepBefore(&x,&y,&buttons);}
+ if(isLocal&&getenv("GE32_MANTLE_TEST")&&jumpAllowed()){
+  /* Keep physical sticks and incoming shot impulses out of scripted approaches. */
+  x=y=0;oldbuttons=0;PF(432)=PF(436)=PF(440)=0;
+  if(complexMantleTestEnabled()&&!getenv("GE_STARTMP"))*(int*)(base+0x303000+618564)=1; /* Same single-player practice fixture as the level sweep. */
+ }
+ if(isLocal){mantleTestBefore(&buttons);mantleContext();mantle.forward=(buttons&8)!=0||PF(424)>.25f;
+  if(mantle.active){buttons&=~(15|0x2000);oldbuttons&=~(15|0x2000);PF(416)=PF(424)=0;}
+ }
  if(isLocal){padBefore(&buttons,&oldbuttons);combatBefore(&buttons,&oldbuttons);slideBefore();}
  int aimMove=isLocal&&aimMoveReady(buttons),stance=0,autoStance=0;float aimPushForward=0,aimPushSide=0;if(aimMove){aimPushForward=-PF(432)*PF(392)+PF(440)*PF(388);aimPushSide=-PF(432)*PF(388)-PF(440)*PF(392);stance=PI(184);autoStance=PI(14004);buttons&=~15;oldbuttons&=~15;}
  originalTick(x,y,buttons,oldbuttons);
+ if(isLocal&&getenv("GE32_MANTLE_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)((buttons&0x2000)!=0&&!mantleBusy);
+ else if(isLocal&&mantleBusy)FN(void(*)(int),0x74290)(0);
  if(isLocal&&getenv("GE32_LEVEL_SWEEP")&&jumpAllowed())FN(void(*)(int),0x74290)(sweep.fire);
  if(aimMove&&PI(332)){PI(184)=stance;PI(14004)=autoStance;aimMoveAfter();PF(424)+=aimPushForward;PF(416)+=aimPushSide;}
  if(isLocal&&getenv("GE32_GRENADE_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(grenadeTestFire);
  if(isLocal&&getenv("GE32_HEALTH_TEST")&&jumpAllowed())FN(void(*)(int),0x74290)(healthTestFire);
- if(isLocal){combatAfter(rawButtons);slideAfter();precisionAimTestFeed();precisionAimTick();precisionAimTestAfter();combatTestAfter(rawButtons);dropTestAfter();padTestAfter();templeStressAfter();sweepAfter();combatLifecycleTest();}
+ if(isLocal){mantlePublish();mantleTestAfter();combatAfter(rawButtons);slideAfter();precisionAimTestFeed();precisionAimTick();precisionAimTestAfter();combatTestAfter(rawButtons);dropTestAfter();padTestAfter();templeStressAfter();sweepAfter();combatLifecycleTest();}
  int n=localIndex();if(NUMBER!=n||!CURRENT||CURRENT!=PLAYERS[n])return;
  static int testTicks=0;
  if(getenv("GE32_WHEEL_TEST")){
@@ -118,7 +133,7 @@ static const char*itemName(int id){return id==PAD_ITEM?"Jump Pad":id>=0&&id<=GRE
 #include "wheel-layout.h"
 static void inventory(void){InventorySnapshot s=snapshotRead();count=s.count;memcpy(ids,s.ids,sizeof(ids));}
 static unsigned char buttonHook(void *p,int b){
- if(getenv("GE32_LEVEL_SWEEP")||getenv("GE32_CHARACTER_TEST"))return 0;
+ if(getenv("GE32_LEVEL_SWEEP")||getenv("GE32_CHARACTER_TEST")||getenv("GE32_MANTLE_TEST"))return 0;
  if(!pad)pad=p;
  if(p==pad && playing()){
   if(b==7||b==8)return combatButton(b,getButton(p,b),snapshotRead().allowJump&&!openWheel&&!FN(int(*)(void),0x1000+1453264)());
@@ -131,8 +146,9 @@ static unsigned char buttonHook(void *p,int b){
  return getButton(p,b);
 }
 static short axisHook(void*p,int a){
- if(getenv("GE32_LEVEL_SWEEP"))return 0;
+ if(getenv("GE32_LEVEL_SWEEP")||getenv("GE32_MANTLE_TEST"))return 0;
  pad=p;
+ if(mantleBusy&&(a==0||a==1||a==5))return 0;
  if(p==pad && playing() && (openWheel||getButton(p,9)) && (a==2||a==3||a==4||a==5)){aimSubmit(0,0,0,0,0);return 0;}
  if((getenv("GE32_AIM_TEST")||getenv("GE32_LEVEL_SWEEP"))&&p!=&aimTestDevice&&(a==2||a==3))return 0;
  short raw=getAxis(p,a);if((a==2||a==3)&&precisionAimCapture(p))return 0;return raw;
@@ -229,10 +245,16 @@ static int testTick(void*w){
  }
  return 1;
 }
+#ifdef GE32_SOLO_COOP_PAD_TEST
+#include "solo-coop-pad-test.h"
+#endif
 static void swapHook(void*w){
+#ifdef GE32_SOLO_COOP_PAD_TEST
+ coopPadTrial(w);
+#endif
  renderThread=GetCurrentThreadId();
  if(!useProgram){useProgram=(void*)wglGetProcAddress("glUseProgram");activeTexture=(void*)wglGetProcAddress("glActiveTexture");}
- dropTestLaunch();sweepLaunch();
+ r3TestRender();complexMantleLaunch();dropTestLaunch();sweepLaunch();
  if(getenv("GE32_GRENADE_TEST")||getenv("GE32_LEVEL_SWEEP")){int selected=InterlockedExchange(&grenadeTestSelect,0);if(selected){wheelUpdate(1,0,0,0);int index=-1;for(int i=0;i<count;i++)if(ids[i]==selected)index=i;testAssert(index>=0,"equipment present in wheel");float angle=wheelAngle(index),x=cosf(angle),y=sinf(angle);wheelUpdate(1,0,x,y);testAssert(choice>=0&&ids[choice]==selected,"fixed directional slot selects requested gadget");wheelUpdate(0,0,x,y);}}
  padTestRenderTick(w);if(!getenv("GE32_PAD_TEST")&&!getenv("GE32_LEVEL_SWEEP"))padPoll();
  if(testTick(w)){swapWindow(w);return;}
@@ -242,6 +264,7 @@ static void swapHook(void*w){
  wheelUpdate(lb,back,x,y);
  if(useProgram&&activeTexture){drawPad(w);drawHealth(w);if(openWheel)draw(w);}
  healthTestRender(w);
+ if(getenv("GE32_MANTLE_TEST")&&mantleBusy){static int captured;if(!captured){padTestCapture(w,"mantle-debug.bmp");captured=1;}}
  if(InterlockedExchange(&openingCapture,0))padTestCapture(w,"airborne-opening.bmp");
  if(getenv("GE32_MOVEMENT_VISUAL_TEST")&&InterlockedExchange(&movementCapture,0))padTestCapture(w,"movement-slide.bmp");
  if(getenv("GE32_TEMPLE_VISUAL_TEST")&&InterlockedExchange(&templeFrameCapture,0))padTestCapture(w,"temple-camera-transition.bmp");
@@ -277,6 +300,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved){
   int portal=installPortalHook();
   int portrait=installPortraitProjection();
   if(getenv("GE32_CHARACTER_TEST")&&!installCharacterTest()){fprintf(logfile,"FAIL character test hooks unsupported\n");fflush(logfile);ExitProcess(2);}
+  if(!installSoloCoop()&&logfile)fprintf(logfile,"Solo co-op menu unavailable on this build.\n");
   int h=installHealthHook();
   int a=replaceImport("SDL_GameControllerGetButton",buttonHook,(void**)&getButton);
   int b=replaceImport("SDL_GameControllerGetAxis",axisHook,(void**)&getAxis);

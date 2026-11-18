@@ -8,14 +8,17 @@ static int combatButtonHeld[2],sprintLatched,sprintOn;
 #define MOVE_SPRINT_RATIO 1.46f /* native gait is nonlinear; calibrated in-engine */
 static float sprintBlend;
 static void*combatPlayer;static int combatStage,combatTimer;
+static int padSuspendForSlap(void);
+static void padEquip(void);
 static struct {
- int phase,saved[2],clip[2],previous[2],priorName,seenStrike,deferredWeapon,slaps,events;
+ int resumePad,phase,saved[2],clip[2],previous[2],priorName,seenStrike,deferredWeapon,slaps,events;
  float elapsed,cooldown;
 } slap;
 static unsigned char combatButton(int index,unsigned char raw,int allowed){
  int slot=index==7?0:1;
  if(raw&&!combatButtonHeld[slot]&&allowed){
-  if(index==7)InterlockedIncrement(&sprintClicks);else InterlockedExchange(&slapRequests,1);
+  if(index==7)InterlockedIncrement(&sprintClicks);
+  else if(!mantleBusy)InterlockedExchange(&slapRequests,1);
  }
  combatButtonHeld[slot]=raw!=0;
  return allowed?0:raw;
@@ -35,9 +38,12 @@ static void restoreSlap(void){
  PI(14072)=slap.priorName;
  slap.phase=0;slap.cooldown=12;slap.elapsed=0;
  if(deferred>=4)InterlockedExchange(&pendingWeapon,deferred);
+ else if(slap.resumePad)padEquip();
+ slap.resumePad=0;
  if(logfile){fprintf(logfile,"slap return right=%d left=%d clips=%d/%d\n",HI(0,0),HI(1,0),HI(0,44),HI(1,44));fflush(logfile);}
 }
 static void beginSlap(void){
+ slap.resumePad=padSuspendForSlap();
  for(int h=0;h<2;h++){slap.saved[h]=HI(h,0);slap.clip[h]=HI(h,44);slap.previous[h]=HI(h,8);}
  slap.priorName=PI(14072);slap.deferredWeapon=-1;slap.seenStrike=0;slap.elapsed=0;
  PI(14072)=1;swapNow(0,1);swapNow(1,0);slap.phase=1;
@@ -55,9 +61,11 @@ static void combatBefore(unsigned short *buttons,unsigned short *oldbuttons){
  else if(clicks&1)sprintLatched=!sprintLatched;
  if(PI(256)||*(int*)(base+0x303000+65912)){slap.phase=0;sprintLatched=0;return;}
  if(!allowed)return; /* pause/cinematic freezes phase instead of restoring through it */
- if(request&&!openWheel&&!slap.phase&&slap.cooldown<=0){
+ if(request&&!openWheel&&!mantleBusy&&!slap.phase&&slap.cooldown<=0){
   int weapon=HI(0,0);
-  if(weapon>=1&&weapon<=25&&HI(0,4)<0&&HI(1,4)<0&&HI(0,36)<5)beginSlap();
+  int state=HI(0,36);
+  int ready=(weapon>=1&&weapon<GRENADE_ITEM&&state<5)||(weapon==GRENADE_ITEM&&state==0);
+  if(ready&&HI(0,4)<0&&HI(1,4)<0)beginSlap();
  }
  if(slap.phase){
   *buttons&=~(0x2000|0x10|0x20);*oldbuttons&=~(0x2000|0x10|0x20);
