@@ -512,13 +512,12 @@ static uint32_t nv2a_filter_word(bool source_linear)
 {
     // NV097 encodes minification in bits 16..23 and magnification in 24..27:
     //   1 = box/nearest, 2 = tent/linear.
-    // Do not set bits 13..15 here; those select the quincunx/Gaussian
-    // convolution kernels and visibly smear every texture.  LU_IMAGE textures
-    // have one physical level, so LOD0 nearest/bilinear is the complete state.
+    // Set bit 13 for ordinary box/tent filtering. A physical NV2A halts
+    // on method 0x1b14 if this field is zero, even for nearest filtering.
     // FILTER_THREE_POINT normally performs its third tap in a fragment shader;
     // bilinear is the closest fixed-function reconstruction on this backend.
     const bool linear = source_linear && g_filter_mode != FILTER_NONE;
-    return linear ? 0x02020000u : 0x01010000u;
+    return linear ? 0x02022000u : 0x01012000u;
 }
 
 static void nv2a_disable_texture(int tile)
@@ -1267,11 +1266,17 @@ static uint8_t nv2a_next_noise_stencil_ref(void)
     return (uint8_t)++g_noise_stencil_ref;
 }
 
+// The pre-transformed vertex stream needs perspective for both depth and
+// textures. Preserve these bits when toggling stencil writes for noise.
+static const uint32_t NV2A_CONTROL0_PERSPECTIVE =
+    NV097_SET_CONTROL0_Z_PERSPECTIVE_ENABLE |
+    NV097_SET_CONTROL0_TEXTURE_PERSPECTIVE_ENABLE;
+
 static void nv2a_begin_noise_mask(uint8_t ref)
 {
     uint32_t *p = pb_begin();
     p = pb_push1(p, NV097_SET_CONTROL0,
-                 NV097_SET_CONTROL0_STENCIL_WRITE_ENABLE);
+                 NV2A_CONTROL0_PERSPECTIVE | NV097_SET_CONTROL0_STENCIL_WRITE_ENABLE);
     p = pb_push1(p, NV097_SET_STENCIL_TEST_ENABLE, 1);
     p = pb_push1(p, NV097_SET_STENCIL_MASK, 0xFFu);
     p = pb_push1(p, NV097_SET_STENCIL_FUNC,
@@ -1298,7 +1303,7 @@ static void nv2a_begin_noise_color(uint8_t ref)
         NV097_SET_COLOR_MASK_RED_WRITE_ENABLE |
         NV097_SET_COLOR_MASK_ALPHA_WRITE_ENABLE;
     uint32_t *p = pb_begin();
-    p = pb_push1(p, NV097_SET_CONTROL0, 0);
+    p = pb_push1(p, NV097_SET_CONTROL0, NV2A_CONTROL0_PERSPECTIVE);
     p = pb_push1(p, NV097_SET_STENCIL_TEST_ENABLE, 1);
     p = pb_push1(p, NV097_SET_STENCIL_MASK, 0);
     p = pb_push1(p, NV097_SET_STENCIL_FUNC,
@@ -1321,7 +1326,7 @@ static void nv2a_end_noise_stencil(void)
 {
     uint32_t *p = pb_begin();
     p = pb_push1(p, NV097_SET_STENCIL_TEST_ENABLE, 0);
-    p = pb_push1(p, NV097_SET_CONTROL0, 0);
+    p = pb_push1(p, NV097_SET_CONTROL0, NV2A_CONTROL0_PERSPECTIVE);
     p = pb_push1(p, NV097_SET_STENCIL_MASK, 0xFFu);
     p = pb_push1(p, NV097_SET_DEPTH_WRITE_ENABLE,
                  g_rs.depth_write ? 1u : 0u);
@@ -1999,7 +2004,7 @@ static void nv2a_init(void)
     p = pb_begin();
     p = pb_push1(p, NV097_SET_BLEND_ENABLE, 0);
     p = pb_push1(p, NV097_SET_STENCIL_TEST_ENABLE, 0);
-    p = pb_push1(p, NV097_SET_CONTROL0, 0);
+    p = pb_push1(p, NV097_SET_CONTROL0, NV2A_CONTROL0_PERSPECTIVE);
     p = pb_push1(p, NV097_SET_COLOR_MASK,
                  NV097_SET_COLOR_MASK_BLUE_WRITE_ENABLE |
                  NV097_SET_COLOR_MASK_GREEN_WRITE_ENABLE |
