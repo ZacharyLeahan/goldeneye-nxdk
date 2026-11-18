@@ -12,6 +12,19 @@ def raw(rva):
  for vs,rv,rs,rp in sections:
   if rv<=rva<rv+max(vs,rs):return rp+rva-rv
  raise ValueError(hex(rva))
+# The practice roster includes the human player. Permit a roster of one,
+# then check the roster size immediately after initializing the human slot.
+# The original loop went straight to slot one, skipping that termination check.
+minimum = raw(0xf5231)
+after_human = raw(0xf549f)
+count_check = raw(0xf54d1)
+if (b[minimum:minimum + 5] != bytes.fromhex('b8 02 00 00 00') or
+    b[after_human:after_human + 2] != bytes.fromhex('eb df') or
+    b[count_check:count_check + 5] != bytes.fromhex('49 39 df 75 aa')):
+ raise SystemExit("Unsupported GE32 practice roster loop.")
+b[minimum + 1] = 1
+b[after_human + 1] = count_check - (after_human + 2)
+
 imp=raw(u32(opt+112+8));loadiat=None
 while u32(imp+12):
  lookup=u32(imp);iat=u32(imp+16);j=0
