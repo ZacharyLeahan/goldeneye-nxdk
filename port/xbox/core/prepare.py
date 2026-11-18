@@ -32,6 +32,21 @@ for unit in ("lv", "spectrum", "image_bank", "objecthandler", "initunk_005450", 
         src = adapt(src, "menu_update = MENU_FILE_SELECT;",
                     "menu_update = MENU_RAREWARE_LOGO;")
     if unit == "front":
+        # Only Complex has converted multiplayer stage data in xbox.bin.
+        # Use the stock disabled-tile rendering for every unavailable arena.
+        default = "MP_stage_selected = MP_STAGE_TEMPLE;"
+        if src.count(default) != 3:
+            raise ValueError("Review upstream multiplayer default and fallback arenas")
+        src = src.replace(default, "MP_stage_selected = MP_STAGE_COMPLEX;")
+        check = "s32 check_if_mp_stage_unlocked(s32 stage)\n{\n    s32 players;"
+        src = adapt(src, check, check + "\n    if (stage != MP_STAGE_COMPLEX) return FALSE;")
+        src = adapt(src, "current_mp_stage_highlighted = MP_STAGE_RANDOM;",
+                    "current_mp_stage_highlighted = MP_stage_selected;")
+        src = adapt(src, """while (check_if_mp_stage_unlocked(current_mp_stage_highlighted) == 0)
+            {
+                current_mp_stage_highlighted = current_mp_stage_highlighted - 1;
+            }""", """if (!check_if_mp_stage_unlocked(current_mp_stage_highlighted))
+                current_mp_stage_highlighted = -1;""")
         src = adapt(src, "if (isGunBarrelInMode2())\n    {\n        frontChangeMenu(MENU_EYE_INTRO, TRUE);",
                     "if (isGunBarrelInMode2())\n    {\n        frontChangeMenu(is_first_time_on_main_menu ? MENU_EYE_INTRO : MENU_FILE_SELECT, TRUE);")
         marker = "void init_menu06_modeselect(void)\n{"

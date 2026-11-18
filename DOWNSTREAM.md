@@ -59,7 +59,9 @@ These private outputs contain cartridge data. Running the packager without
 `--rom` builds the executable alone.
 
 On a physical Xbox, launching `default.xbe` from XBMC has been verified
-through the Rareware logo to the four-dossier **Select File** screen.
+through file select and into two-player split-screen Complex. The test used a
+controller in port 1 and direct IP-KVM input in port 2 to turn and walk the
+second player.
 
 ### Play Complex locally
 
@@ -67,8 +69,9 @@ through the Rareware logo to the four-dossier **Select File** screen.
 2. At file select, point the left stick at a dossier and press A. The mode
    page lists **COOP CAMPAIGN**, **ONLINE MULTIPLAYER** and
    **LOCAL MULTIPLAYER** in that order. Select the third row with A.
-3. In Multiplayer Options, choose **Level**, then **Complex** (top row,
-   third tile). Check that the options show **Players 2** and **Level Complex**.
+3. Multiplayer Options opens with **Level Complex** selected. Check that it
+   shows **Players 2**. The level picker displays Complex in the top row,
+   third tile, and dims arenas without Xbox assets.
 4. Press Start to begin. The default GoldenEye control style uses the left
    stick to move and turn, the right stick for the N64 C buttons, RT for Z
    (fire), LT for R (aim), A to select or cycle weapons and B to go back or
