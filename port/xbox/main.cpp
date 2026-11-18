@@ -1,117 +1,121 @@
 #include <cstdio>
 #include <cstdarg>
 #include <cstring>
-#include <utility>
 #include <windows.h>
+#include <xboxkrnl/xboxkrnl.h>
 #include <hal/debug.h>
+#include <nxdk/mount.h>
 #include <hal/video.h>
 #include <pbkit/pbkit.h>
-#include <zlib/zlib/zlib.h>
 #include "gfx_pc.h"
 #include "nv2a/gfx_nv2a.h"
+#include "controllers.h"
 
 static_assert(sizeof(Gfx) == 8 && sizeof(Vtx) == 16 && sizeof(Mtx) == 64);
+
 extern "C" {
-void setupRarewareLogoData(s32 address, s32 size);
-Gfx *retrieve_display_rareware_logo(Gfx *dl);
-s32 isGunBarrelInMode2(void);
-extern Mtx *matrixBufferRareLogo0, *matrixBufferRareLogo1, *matrixBufferRareLogo2;
-u8 *g_VtxBuffers[3];
-}
-
-static FILE *rom;
-static constexpr unsigned cartBase = 0x10000000;
-static constexpr unsigned romBytes = 12 * 1024 * 1024;
-static constexpr size_t logoBytes = 0x67f0;
-alignas(64) static uint8_t logo[(logoBytes + 63) & ~63];
+extern unsigned char mainThread[];
+void osCreateThread(void *, int, void (*)(void *), void *, void *, int);
+void osStartThread(void *);
+void mainproc(void *);
+void mixerInit(void);
+int audioInit(void);
+int getPlayerCount(void);
+extern unsigned unknown2;
 static unsigned frame;
-
-void sysLogPrintf(enum LogLevel, const char *format, ...)
-{
-    char message[384];
-    va_list args;
-    va_start(args, format);
-    vsnprintf(message, sizeof(message), format, args);
-    va_end(args);
-    DbgPrint("GE007: %s\n", message);
 }
+static constexpr uintptr_t cart = 0x10000000;
+static unsigned mappedBytes;
+extern "C" void xboxMountResources(u8 *, u32, const u8 *, u32);
+static constexpr unsigned romSize = 12 * 1024 * 1024;
 
-// This disc-only target has no writable desktop shader cache.
-const char *sysResolvePath(const char *) { return ""; }
-
-extern "C" void serialPuts(const char *message) { DbgPrint("GE007: %s", message); }
-
-void sysFatalError(const char *format, ...)
+static void serialByte(unsigned char c)
 {
-    char message[384];
-    va_list args;
-    va_start(args, format);
-    vsnprintf(message, sizeof(message), format, args);
-    va_end(args);
-    DbgPrint("GE007: %s\n", message);
-    debugPrint("GoldenEye 007\n%s\n", message);
-    for (;;) Sleep(1000);
-}
-
-extern "C" void romCopy(void *target, void *source, u32 length)
-{
-    unsigned address = (uintptr_t)source;
-    if (address < cartBase || address - cartBase > romBytes ||
-        length > romBytes - (address - cartBase) ||
-        fseek(rom, address - cartBase, SEEK_SET) || fread(target, 1, length, rom) != length)
-        sysFatalError("ROM read failed at %08x (%u bytes)", address, length);
-}
-
-// Use host-order GBI words, as for assets/rarewarelogo.c on the desktop.
-// Keep vertex color/normal bytes in their original order.
-static void loadIntro()
-{
-    setupRarewareLogoData((uintptr_t)logo, sizeof(logo));
-    if (crc32(0, logo, logoBytes) != 0x05f60803)
-        sysFatalError("Unexpected intro segment. Use a retail US .z64 ROM.");
-    // assets/rarewarelogo.c starts with six four-byte color arrays.
-    for (unsigned i = 0x18; i < logoBytes;) {
-        if (i >= 0x2b18 && i < 0x43e8) {
-            for (unsigned field = 0; field < 12; field += 2)
-                std::swap(logo[i + field], logo[i + field + 1]);
-            i += sizeof(Vtx);
-        } else {
-            std::swap(logo[i], logo[i + 3]);
-            std::swap(logo[i + 1], logo[i + 2]);
-            i += 4;
+    for (unsigned i = 0; i < 50000; ++i) {
+        unsigned char ready;
+        __asm__ volatile("inb %1,%0" : "=a"(ready) : "Nd"((unsigned short)0x3fd));
+        if (ready & 0x20) {
+            __asm__ volatile("outb %0,%1" :: "a"(c), "Nd"((unsigned short)0x3f8));
+            break;
         }
     }
 }
+extern "C" void serialPuts(const char *s) { while (*s) serialByte(*s++); }
+void sysLogPrintf(enum LogLevel, const char *fmt, ...)
+{
+    char buf[384];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    serialPuts(buf);
+    serialPuts("\r\n");
+}
+void sysFatalError(const char *fmt, ...)
+{
+    char buf[384];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    serialPuts(buf);
+    debugPrint("%s\n", buf);
+    for (;;) Sleep(1000);
+}
 
-extern "C" u32 osVirtualToPhysical(void *address) { return (uintptr_t)address; }
-extern "C" s16 viGetX() { return 320; }
-extern "C" s16 viGetY() { return 240; }
-extern "C" u8 *viGetFrameBuf2() { return (u8 *)pb_back_buffer(); }
+const char *sysGetTokenString() { return ""; }
+const char *sysResolvePath(const char *path)
+{
+    if (!strcmp(path, "$S/ge007.eep")) return "E:\\UDATA\\GE007\\ge007.eep";
+    return "";
+}
+uintptr_t sysImageBase() { return 0x10000; }
+void sysSleep(uint32_t us) { Sleep((us + 999) / 1000); }
+uint64_t sysGetMicroseconds() { return KeQueryInterruptTime() / 10; }
+extern "C" int romdataCartAddrValid(unsigned a, unsigned n)
+{
+    return a >= cart && a - cart <= mappedBytes && n <= mappedBytes - (a - cart);
+}
+extern "C" void videoEndFrame() { gfx_end_frame(); ++frame; }
+extern "C" void videoStartFrame() { gfx_start_frame(); }
+extern "C" void videoSyncSplitScreen() { gfx_set_split_screen(getPlayerCount() >= 2); }
+extern "C" int videoQuitRequested() { return 0; }
+extern "C" void videoResetTextureCache() { gfx_texture_cache_clear(); }
+extern "C" void videoUpdateNativeResolution(int w, int h)
+{
+    gfx_current_native_viewport = {0, 0, (uint32_t)w, (uint32_t)h};
+}
 extern "C" u32 videoGetFrameCount() { return frame; }
-extern "C" Gfx *optionsOverlayEmit() { return nullptr; }
 
 int main()
 {
     XVideoSetMode(640, 480, 32, REFRESH_DEFAULT);
-    rom = fopen("D:\\ge007.ntsc-final.z64", "rb");
-    if (!rom) sysFatalError("Place ge007.ntsc-final.z64 beside default.xbe.");
-    unsigned char header[64];
-    if (fread(header, 1, sizeof(header), rom) != sizeof(header) ||
-        memcmp(header, "\x80\x37\x12\x40", 4) || memcmp(header + 0x20, "GOLDENEYE", 9) ||
-        memcmp(header + 0x3c, "GEE", 3) || fseek(rom, 0, SEEK_END) || ftell(rom) != romBytes)
-        sysFatalError("Expected a 12 MiB NTSC-U GoldenEye ROM in .z64 byte order.");
-
-    static Mtx matrices[3][2];
-    matrixBufferRareLogo0 = matrices[0];
-    matrixBufferRareLogo1 = matrices[1];
-    matrixBufferRareLogo2 = matrices[2];
-    loadIntro();
-
+    serialPuts("GE007 game entry\r\n");
+    void *dram = MmAllocateContiguousMemoryEx(0x800000, 0x1800000, 0x1ffffff, 4096, PAGE_READWRITE);
+    if ((uintptr_t)dram != 0x81800000) sysFatalError("Cannot reserve game DRAM (%p)", dram);
+    void *rom = (void *)cart;
+    FILE *resources = fopen("D:\\xbox.bin", "rb");
+    if (!resources || fseek(resources, 0, SEEK_END)) sysFatalError("Cannot open xbox.bin");
+    long resourceBytes = ftell(resources);
+    if (resourceBytes < 8 || resourceBytes > 8 * 1024 * 1024) sysFatalError("Invalid resource size");
+    rewind(resources);
+    mappedBytes = romSize + resourceBytes;
+    SIZE_T size = mappedBytes;
+    auto status = NtAllocateVirtualMemory(&rom, 0, &size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (status < 0 || (uintptr_t)rom != cart) sysFatalError("Cannot map cartridge (%x)", status);
+    FILE *f = fopen("D:\\ge007.ntsc-final.z64", "rb");
+    if (!f || fread(rom, 1, romSize, f) != romSize || memcmp((char *)rom + 0x20, "GOLDENEYE", 9))
+        sysFatalError("Cannot read NTSC-U cartridge");
+    fclose(f);
+    u8 *pack = (u8 *)rom + romSize;
+    if (fread(pack, 1, resourceBytes, resources) != (size_t)resourceBytes) sysFatalError("Cannot read xbox.bin");
+    fclose(resources);
+    xboxMountResources((u8 *)rom, romSize, pack, resourceBytes);
+    unknown2 = __builtin_bswap32(unknown2);
     GfxWindowManagerAPI window{};
     window.init = [](const GfxWindowInitSettings *) {
         pb_extra_buffers(1);
-        int err = pb_init();
-        if (err) sysFatalError("pbkit init failed (%d)", err);
+        if (pb_init()) sysFatalError("pbkit init failed");
         pb_show_front_screen();
     };
     window.get_dimensions = [](uint32_t *w, uint32_t *h, int32_t *x, int32_t *y) {
@@ -125,19 +129,15 @@ int main()
     gfx_init(&settings);
     gfx_current_native_viewport = {0, 0, 320, 240};
     gfx_current_native_aspect = 4.0f / 3.0f;
-
-    static Vp viewport = {{{640, 480, 511, 0}, {640, 480, 511, 0}}};
-    static Gfx commands[256];
-    for (;;) {
-        if (isGunBarrelInMode2()) loadIntro();
-        Gfx *dl = commands;
-        gSPViewport(dl++, &viewport);
-        gDPSetScissor(dl++, G_SC_NON_INTERLACE, 0, 0, 320, 240);
-        dl = retrieve_display_rareware_logo(dl);
-        gSPEndDisplayList(dl++);
-        gfx_start_frame();
-        gfx_run(commands);
-        gfx_end_frame();
-        ++frame;
-    }
+    if (!nxIsDriveMounted('E')) nxMountDrive('E', "\\Device\\Harddisk0\\Partition1");
+    CreateDirectoryA("E:\\UDATA", nullptr);
+    CreateDirectoryA("E:\\UDATA\\GE007", nullptr);
+    audioInit();
+    mixerInit();
+    if (inputInit()) sysFatalError("Controller initialization failed");
+    serialPuts("starting mainproc\r\n");
+    portKernelInit();
+    osCreateThread(mainThread, 3, mainproc, nullptr, nullptr, 10);
+    osStartThread(mainThread);
+    for (;;) Sleep(1000);
 }

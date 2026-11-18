@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 import zipfile
 
+from assets import pack
+
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
@@ -60,14 +62,19 @@ def main():
         subprocess.run(["cmake", "--build", str(build), "--parallel"], env=env, check=True)
         print(build / "default.xbe", flush=True)
         if args.rom:
-            # Stage only the two disc files. Publish the image after successful packing.
+            # Publish the image only after packing all private cartridge resources.
             with tempfile.TemporaryDirectory(dir=build) as temp:
                 staging = Path(temp) / "disc"
                 staging.mkdir()
                 (staging / ROM_NAME).write_bytes(data)
+                (staging / "xbox.bin").write_bytes(pack(data))
                 shutil.copyfile(build / "default.xbe", staging / "default.xbe")
                 image = Path(temp) / "ge007.iso"
                 subprocess.run([xiso, "-c", str(staging), str(image)], env=env, check=True)
+                install = build / "disc"
+                install.mkdir(exist_ok=True)
+                for item in staging.iterdir():
+                    item.replace(install / item.name)
                 image.replace(build / "ge007.iso")
             print(build / "ge007.iso", flush=True)
     except (OSError, ValueError, zipfile.BadZipFile, subprocess.CalledProcessError) as exc:

@@ -29,41 +29,51 @@ No ROMs, extracted game assets, save files, GE32 binaries, patched executables, 
 
 ## Original Xbox
 
-The downstream nxdk target lives in `port/xbox/`. It compiles the GoldenEye
-title code, matrix routines and software RSP directly from this checkout.
-The NV2A renderer comes from Perfect Dark X. The current XBE loops the textured
-Rareware logo from a US cartridge dump. Menus, missions, input and audio still
-need integration. The GE32 Windows extension uses a separate binary interface.
+The nxdk target in `port/xbox/` builds a single XBE from the game's menu,
+level, multiplayer, scheduler and audio code in this checkout. It uses the
+shared software RSP and the NV2A renderer from Perfect Dark X. The build
+converts the US cartridge's models, audio banks and Complex multiplayer
+resources to the Xbox's little-endian, 32-bit layout.
 
 ### Build and boot
 
-Use Python 3, CMake 3.20 or later, and a recursive nxdk checkout.
-Set `NXDK_DIR` to its absolute path and activate nxdk. The SDK path needs to
+Use Python 3, CMake 3.20 or later, and a recursive nxdk checkout. Set
+`NXDK_DIR` to its absolute path and activate nxdk. The SDK path needs to
 be free of spaces for its compiler wrappers. Put matching LLVM `clang`,
-`opt`, `llvm-ar` and `lld-link` on PATH. The tested nxdk revision is
-`14d5ee97e73347c973f1f57b68b79ec08c9e77f2`.
+`opt`, `llvm-link`, `llvm-ar` and `lld-link` on PATH. The tested nxdk
+revision is `14d5ee97e73347c973f1f57b68b79ec08c9e77f2`.
 
-From an activated SDK shell, build the SDK libraries and host tools once, then
-run the following from the GoldenEye checkout.
-
-```sh
-make -C "$NXDK_DIR" NXDK_ONLY=y all cxbe extract-xiso
-python3 port/xbox/build.py
-```
-
-This produces `build-xbox/default.xbe`. To boot it from a game folder, put
-the XBE beside your ROM named `ge007.ntsc-final.z64`. To build a private
-disc image for xemu, pass your big-endian US ROM or its ZIP.
+From an activated SDK shell, build the SDK libraries and tools once. Run
+the packager from the GoldenEye checkout with your retail US .z64 or ZIP.
 
 ```sh
+make -C "$NXDK_DIR" NXDK_ONLY=y NXDK_SDL=y all cxbe extract-xiso
 python3 port/xbox/build.py --rom "GoldenEye 007.zip"
 ```
 
-The packager checks the dump against the repository's `ge007.u.sha1` and
-writes `build-xbox/ge007.iso`. Load the image as the DVD in a 64 MiB xemu
-profile and reset the guest. A successful boot shows the rotating Rareware
-logo, its lettering and the fade before the animation repeats. The XISO
-contains your cartridge dump and belongs in local build output.
+The packager checks the dump against `ge007.u.sha1`. Open
+`build-xbox/ge007.iso` as the DVD in a 64 MiB xemu profile and reset.
+For an Xbox dashboard installation, copy `default.xbe`, `xbox.bin` and
+`ge007.ntsc-final.z64` together from `build-xbox/disc/` into the game folder.
+These private outputs contain cartridge data. Running the packager without
+`--rom` builds the executable alone.
+
+### Play Complex locally
+
+1. Bind controllers to Xbox ports 1 and 2 before entering multiplayer setup.
+2. At file select, point the left stick at a dossier and press A. The mode
+   page lists **COOP CAMPAIGN**, **ONLINE MULTIPLAYER** and
+   **LOCAL MULTIPLAYER** in that order. Select the third row with A.
+3. In Multiplayer Options, choose **Level**, then **Complex** (top row,
+   third tile). Check that the options show **Players 2** and **Level Complex**.
+4. Press Start to begin. The default GoldenEye control style uses the left
+   stick to move and turn, the right stick for the N64 C buttons, RT for Z
+   (fire), LT for R (aim), A to select or cycle weapons and B to go back or
+   interact.
+
+Complex is the supported arena in this build. Selecting co-op campaign or
+online multiplayer displays an unavailable message. The Windows GE32
+extension has a separate binary interface.
 
 ### Bring Windows upstream changes into the fork
 

@@ -536,6 +536,13 @@ static void nv2a_disable_texture(int tile)
 
 static void nv2a_bind_texture(int tile, NV2ATexture &t)
 {
+    // A new texture receives sampler parameters before its first upload.
+    // Keep those parameters on the object while the hardware stage is off.
+    // Submitting the uninitialized FORMAT here halts a physical NV2A.
+    if (!nv2a_texture_data(t)) {
+        nv2a_disable_texture(tile);
+        return;
+    }
     uint32_t words[7];
     words[0] = (uint32_t)(uintptr_t)nv2a_texture_data(t) & 0x03ffffffu;
     words[1] = t.fmt_word;
