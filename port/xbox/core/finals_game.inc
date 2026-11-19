@@ -1,7 +1,11 @@
 /* Simulation-thread bindings for the downstream controller extension. */
 #include "port/xbox/finals_controls.h"
+#include "port/lan/lan.h"
 #include "finals_constants.h"
 #include "stan.h"
+#if defined(_WIN32) && !defined(__XBOX__)
+#include "system.h"
+#endif
 
 extern float fminf(float, float);
 extern float fmaxf(float, float);
@@ -19,6 +23,7 @@ typedef struct {
     coord3d pad, preview;
 } XboxLife;
 static XboxLife xboxLives[MAXCONTROLLERS];
+static uint32_t lanButtons, lanTriggerPress, lanConsumedTrigger;
 
 static int xboxGrounded(void)
 {
@@ -32,6 +37,7 @@ static int xboxGrounded(void)
         fabsf(stanGetPositionYValue(p->field_488.current_tile_ptr, at->x, at->z) - p->stanHeight) < 3;
 }
 
+#include <float.h>
 #include "port/xbox/core/traversal.inc"
 
 static float xboxCeiling(float rise)
@@ -114,8 +120,36 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
     struct player *p = g_CurrentPlayer;
     XboxLife *life = &xboxLives[slot];
     traversal=&traversalPlayers[slot];
-    FinalsPad pad;
-    xboxReadFinalsPad(slot, &pad);
+    int remoteSeat = slot == 1 && lanActive();
+    FinalsPad pad = {0};
+    if (!remoteSeat) xboxReadFinalsPad(slot, &pad);
+#if defined(_WIN32) && !defined(__XBOX__)
+    /* The existing Windows harness supplies independent native pad states. */
+    static const char *const scripts[] = {"GE_INPUTSCRIPT", "GE_INPUTSCRIPT_P1",
+                                          "GE_INPUTSCRIPT_P2", "GE_INPUTSCRIPT_P3"};
+    static int scripted[] = {-1, -1, -1, -1};
+    if (scripted[slot] < 0) scripted[slot] = getenv(scripts[slot]) != NULL;
+    if (!remoteSeat && scripted[slot]) {
+        pad = (FinalsPad){0};
+        if (buttons & Z_TRIG) pad.buttons |= FIN_FIRE;
+        if (buttons & A_BUTTON) pad.buttons |= FIN_A;
+        if (buttons & B_BUTTON) pad.buttons |= FIN_B;
+        if (buttons & R_TRIG) pad.buttons |= FIN_AIM;
+        if (buttons & L_TRIG) pad.buttons |= FIN_WHEEL;
+        pad.lx = stick_x * 400;
+        pad.ly = -stick_y * 400;
+        if (buttons & L_TRIG) { pad.rx = pad.lx; pad.ry = pad.ly; pad.lx = pad.ly = 0; }
+    }
+#endif
+    LanPose peerInput = {0};
+    if (remoteSeat) {
+        lanRemote(&peerInput);
+        pad.buttons = peerInput.buttons & (FIN_FIRE | FIN_AIM | FIN_X);
+        if (peerInput.life && peerInput.triggerPress != lanConsumedTrigger) {
+            lanConsumedTrigger = peerInput.triggerPress;
+            pad.buttons |= FIN_FIRE;
+        }
+    }
     if (life->owner != p || traversal->mantle.stage!=lvlGetCurrentStageToLoad() || g_GlobalTimer < life->timer || p->bonddead) {
         memset(life,0,sizeof(*life));
         memset(traversal,0,sizeof(*traversal));
@@ -145,9 +179,19 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
         return;
     }
     if(!life->loaded){
+        if (lanActive()) {
+            bondinvAddInvItem(ITEM_WPPK);
+            p->ammoheldarr[get_ammo_type_for_weapon(ITEM_WPPK)] = 49;
+            currentPlayerEquipWeaponWrapper(GUNRIGHT, ITEM_WPPK);
+        }
         bondinvAddInvItem(ITEM_GRENADE);
         p->ammoheldarr[get_ammo_type_for_weapon(ITEM_GRENADE)] = 3;
         life->loaded=1;
+    }
+    if (slot == 1 && lanActive() && peerInput.life && peerInput.weapon >= ITEM_KNIFE &&
+        peerInput.weapon <= ITEM_TANKSHELLS && bondinvItemAvailable(peerInput.weapon) &&
+        get_item_in_hand_or_watch_menu(GUNRIGHT) != peerInput.weapon) {
+        gunRequestHandWeaponChange(GUNRIGHT, peerInput.weapon, 1);
     }
     FinalsInventory inventory={0};
     for(int id=4;id<=25;id++)
@@ -161,6 +205,29 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
     inventory.width=getPlayer_c_screenwidth()/viGetX(); inventory.height=getPlayer_c_screenheight()/viGetY();
     int equipment;
     int selecting=xboxFinalsWheel(slot,1,&pad,&inventory,&equipment);
+#if defined(_WIN32) && !defined(__XBOX__)
+    static int traceSplit = -1;
+    static struct { int initialized, wheel, weapon, grenades, shots; } previousSeat[MAXCONTROLLERS];
+    if (traceSplit < 0) traceSplit = getenv("GE_SPLIT_TRACE") != NULL;
+    if (traceSplit && !lanActive()) {
+        int shots = g_playerPlayerData[slot].shot_count[0];
+        int grenades = inventory.grenades;
+        for (int hand = 0; hand < 2; ++hand)
+            if (p->hands[hand].weaponnum == ITEM_GRENADE)
+                grenades += p->hands[hand].weapon_ammo_in_magazine;
+        if (!previousSeat[slot].initialized || previousSeat[slot].wheel != selecting ||
+            previousSeat[slot].weapon != inventory.current || previousSeat[slot].grenades != grenades ||
+            previousSeat[slot].shots != shots) {
+            sysLogPrintf(LOG_INFO, "Split seat %d wheel %d weapon %d grenades %d shots %d",
+                         slot, selecting, inventory.current, grenades, shots);
+            previousSeat[slot].initialized = 1;
+            previousSeat[slot].wheel = selecting;
+            previousSeat[slot].weapon = inventory.current;
+            previousSeat[slot].grenades = grenades;
+            previousSeat[slot].shots = shots;
+        }
+    }
+#endif
     life->wheelOpen=selecting;
     if(equipment>=0){
         life->carrying=equipment==PAD_ITEM;
@@ -190,6 +257,12 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
     traversal->blocked=wheelInput || life->carrying || traversal->padFlight;
     slideBefore(!wheelInput && (pressed & FIN_B));
     if (traversal->mantle.active) native &= ~Z_TRIG;
+    if (lanActive() && slot == 0) {
+        unsigned effective = pad.buttons & (FIN_AIM | FIN_X | FIN_A);
+        if (native & Z_TRIG) effective |= FIN_FIRE;
+        if ((effective & FIN_FIRE) && !(lanButtons & FIN_FIRE)) ++lanTriggerPress;
+        lanButtons = effective;
+    }
     // Accept a new trigger squeeze on the same report as a pad selection.
     if ((!wheelInput || equipment==PAD_ITEM) && !selecting && life->carrying &&
         (pressed&FIN_FIRE) && life->validPreview) {

@@ -1,4 +1,5 @@
 #include <SDL.h>
+#include <hal/xbox.h>
 #include <PR/os.h>
 #include "controllers.h"
 #include "port/lan/lan.h"
@@ -18,7 +19,27 @@ static struct {
     SDL_Joystick *device;
     u16 held;
     s8 x, y;
+    Uint32 resetStarted;
+    int resetHeld;
 } pads[MAXCONTROLLERS];
+
+static int egyptTest;
+static Uint32 egyptStart;
+
+int xboxEgyptTestActive(void) { return egyptTest; }
+
+void inputStartEgyptTest(void)
+{
+    egyptStart = SDL_GetTicks();
+    egyptTest = 1;
+}
+
+static int egyptTrigger(void)
+{
+    if (!egyptTest) return 0;
+    Uint32 elapsed = SDL_GetTicks() - egyptStart;
+    return elapsed >= 4000 && elapsed < 41000 && (elapsed - 4000) % 650 < 130;
+}
 
 int inputInit(void)
 {
@@ -75,10 +96,24 @@ void inputUpdate(void)
             if (SDL_JoystickGetAxis(joy, 2) > 4000) raw.buttons |= FIN_AIM;
             if (SDL_JoystickGetAxis(joy, 5) > 4000) raw.buttons |= FIN_FIRE;
         }
+        /* A trace must replay the same camera even with a live or drifting pad.
+         * The physical reset chord below remains available during capture. */
+        if (i == 0 && egyptTest)
+            raw = (FinalsPad){.buttons = egyptTrigger() ? FIN_FIRE : 0};
         SDL_AtomicLock(&finalsLock);
         finalsPads[i] = raw;
         SDL_AtomicUnlock(&finalsLock);
         if (!joy) continue;
+        /* nxdk SDL maps Black to button 5 and Back to button 6. Track each
+         * physical pad separately so two players cannot complete a chord. */
+        int reset = SDL_JoystickGetButton(joy, 5) && SDL_JoystickGetButton(joy, 6)
+                 && SDL_JoystickGetAxis(joy, 2) > 16000 && SDL_JoystickGetAxis(joy, 5) > 16000;
+        if (reset) {
+            Uint32 now = SDL_GetTicks();
+            if (!pads[i].resetHeld) pads[i].resetStarted = now;
+            if (now - pads[i].resetStarted >= 1500) XLaunchXBE(NULL);
+        }
+        pads[i].resetHeld = reset;
         u16 buttons = 0;
         int hat = SDL_JoystickGetHat(joy, 0);
         if (hat & SDL_HAT_UP) buttons |= U_JPAD;
@@ -104,6 +139,10 @@ void inputUpdate(void)
 unsigned inputComputePad(int slot, signed char *x, signed char *y)
 {
     if ((unsigned)slot >= MAXCONTROLLERS || (lanActive() && slot != 0)) { *x = *y = 0; return 0; }
+    if (slot == 0 && egyptTest) {
+        *x = *y = 0;
+        return egyptTrigger() ? Z_TRIG : 0;
+    }
     *x = pads[slot].x;
     *y = pads[slot].y;
     return pads[slot].held;

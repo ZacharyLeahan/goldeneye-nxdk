@@ -1,8 +1,8 @@
-# GoldenEye PC Port — The Finals-inspired controls
+# GoldenEye multiplayer fork
 
 This downstream fork keeps the upstream PC-port source and adds the local GE32 extension in [mods/the-finals](mods/the-finals/README.md). The [original Xbox build](#original-xbox) uses the same source checkout.
 
-The playable multiplayer build used here is GE32 2026.11.07 e8859fe9 for Windows, a separate unofficial fan fork of the base PC port. Its multiplayer source is not included in this checkout. The additions are a native Windows extension and reversible executable patches for that exact GE32 release; they are not integrated into the upstream port build.
+The native Windows and original Xbox builds share the LAN protocol, multiplayer menu and movement controls from this checkout. The separate GE32 extension targets the 2026.11.07 e8859fe9 Windows release with reversible executable patches. The native builds run independently of GE32.
 
 ## Current additions
 
@@ -31,7 +31,7 @@ No ROMs, extracted game assets, save files, GE32 binaries, patched executables, 
 
 The nxdk target in `port/xbox/` builds a single XBE from the game's menu,
 level, multiplayer, scheduler and audio code in this checkout. It uses the
-shared software RSP and the NV2A renderer from Perfect Dark X. The build
+shared software RSP and the NV2A renderer from [Perfect Dark X](https://github.com/GTTeancum/Perfect-Dark-X). The build
 converts the US cartridge's models, audio banks and Complex multiplayer
 resources to the Xbox's little-endian, 32-bit layout.
 
@@ -42,6 +42,11 @@ Use Python 3, CMake 3.20 or later, and a recursive nxdk checkout. Set
 be free of spaces for its compiler wrappers. Put matching LLVM `clang`,
 `opt`, `llvm-link`, `llvm-ar` and `lld-link` on PATH. The tested nxdk
 revision is `14d5ee97e73347c973f1f57b68b79ec08c9e77f2`.
+
+On Windows, the Xbox build uses MSYS2's `/usr/bin` CMake, Python and
+make to invoke nxdk's shell wrappers, with the MinGW64 LLVM tools on PATH.
+In the activated SDK shell use `PATH="$NXDK_DIR/bin:/usr/bin:/mingw64/bin:$PATH"`
+and `export CMAKE_GENERATOR="Unix Makefiles"` for the game build.
 
 From an activated SDK shell, build the SDK libraries and tools once. Run
 the packager from the GoldenEye checkout with your retail US .z64 or ZIP.
@@ -62,17 +67,20 @@ On a physical Xbox, launching `default.xbe` from XBMC has been verified
 through file select and into two-player split-screen Complex. The test used a
 controller in port 1 and direct IP-KVM input in port 2 to turn and walk the
 second player. The fork-controls build was also tested in a physical two-player
-match using White, right-stick up, and A on port 2.
+match using White, right-stick up, and A on port 2. In a subsequent Complex
+match both players independently turned and threw grenades using the fork
+wheel. The hardware recorded four grenade launches. The three seven-second
+samples containing throws averaged 59.8–60.0 FPS with 19–20 ms p95 frame
+intervals.
 
 ### Play Complex locally
 
 1. Bind controllers to Xbox ports 1 and 2 before entering multiplayer setup.
 2. At file select, point the left stick at a dossier and press A. The mode
-   page lists **COOP CAMPAIGN**, **LAN MULTIPLAYER** and
-   **LOCAL MULTIPLAYER** in that order. Select the third row with A.
+   page lists **Local Multiplayer** and **LAN Multiplayer**. Select **Local Multiplayer** with A. On Windows, select **Multiplayer** in the dossier first.
 3. Multiplayer Options opens with **Level Complex** selected. Check that it
    shows **Players 2**. The level picker displays Complex in the top row,
-   third tile, and dims arenas without Xbox assets.
+   third tile. The picker enforces each arena's native player limit.
 4. Press Start to begin. Each player uses the left stick to move and the
    right stick to look. Pushing the right stick up looks up. A jumps, B
    toggles crouch, Y interacts, X reloads, LT aims, and RT fires. Click the
@@ -97,24 +105,35 @@ physical controller separately and applies equipment and movement to that
 player in the native game. Changes to those shared sources trigger a rebuild.
 Changes to Windows-only hooks need a corresponding native Xbox implementation.
 
-Complex supports two-player local play. Quick slap, hit bars and co-op still
-need native Xbox support.
+Complex supports two-player local play. Quick slap and hit bars still need native Xbox support.
 
 ### Host Complex on a wired LAN
 
-The NTSC-U Windows port in this checkout can host one original Xbox. Each
-machine has its own full-screen camera and controls its own player. The
-movement prototype exchanges position and facing over direct IPv4 UDP.
-Firing, damage, pickups, respawns and match results still need replication.
+The NTSC-U Windows port can host an original Xbox or another Windows player
+over direct IPv4 UDP. Each player has a full-screen view. Position, facing
+and gait drive the other player's multiplayer character animation. Each
+player starts with a PP7. The host resolves gunfire and sends both players'
+health, armour, deaths, kills and respawns to the client. The host also
+awards stage pickups and replicates their visibility, weapon ownership,
+reserve rounds and magazines.
 The separate GE32 release uses a different multiplayer implementation.
+
+The Windows host uses LB for the fork equipment wheel. Hold LB, move the
+right stick to an item, then release LB to equip it. B cancels. The Xbox
+uses White for the same action. On a focused Windows game window, WASD
+moves. Up and Down also walk forward and backward, and Left and Right turn.
+Hold Tab and press an arrow to choose a wheel sector. Each player controls
+their own equipment.
 
 1. Connect both machines to the same LAN. On Windows, build this revision
    with `./build-pc.sh ntsc-final` and prepare the US ROM and desktop asset
    sidecars as described in `docs/building.md`, or use a prepared Windows
-   bundle. Run `ge007.x86_64.exe --lan-host` in the game directory. The
-   window waits for a client on UDP 27007. Connect the Windows controller
-   before launch.
-2. Run `ipconfig` and read the IPv4 address of the Ethernet adapter. If
+   bundle. Run `ge007.x86_64.exe --lan-host` in the game directory, or select **Multiplayer → LAN Multiplayer → Host Match** in the Windows dossier. The
+   host waits for a client on UDP 27007. Connect the Windows controller
+   before launch. Build and install both executables from the same revision.
+   If the host logs `rejected peer build`, compare the two builds.
+2. The Windows host shows the IPv4 address to enter on Xbox. If it shows
+   both Ethernet and Wi-Fi, use the connection on the same LAN as the Xbox. If
    Windows Firewall prompts, allow the game on the Private network profile.
 3. On Xbox, pick a dossier, then **LAN MULTIPLAYER**. Use D-pad left or right
    to select an octet and up or down to change it. Hold LT to step by ten.
@@ -123,10 +142,51 @@ The separate GE32 release uses a different multiplayer implementation.
 4. At spawn, stand still on Xbox while the Windows player moves across its
    view and turns. Swap roles. Repeat from a fresh launch after unplugging
    only the router's WAN cable. Record each build and both screens. The
-   third dossier row, **LOCAL MULTIPLAYER**, starts split-screen play.
+   first multiplayer row, **Local Multiplayer**, starts split-screen play.
+
+A second Windows player can use **Multiplayer → LAN Multiplayer → Join Match** or join with `ge007.x86_64.exe --lan-join HOST_IPV4`.
+The host defaults to Complex. Use `--lan-map Temple` to select another arena.
+The host also sets the winning score. The default is five points. Use
+`--lan-score-limit 1` for a one-point match, or zero for unlimited play.
+After a win, both players press Start on their results screens for a rematch.
+The physical Xbox joined a Windows host and fired on all eleven retail arenas.
+Temple reached its pistol HUD after the portal-table fix. On the other ten
+arenas the Xbox rejoined after each host restart and Windows recorded gunfire
+from both seats. In Complex the Xbox displayed a 1–0 result, accepted Start
+for a rematch and fired in the new round. Install the
+paired `default.xbe` and `xbox.bin` from the same Xbox build.
+To repeat the Complex firefight regression on one Windows PC, run
+`python port/lan/tests/firefight.py build-pc/ge007.x86_64.exe data` from
+the checkout. It starts two game processes on separate test ports, drops
+and duplicates UDP packets, and checks a kill and respawn from each seat.
+It also checks reconnection and contests over a weapon and an ammo crate.
+Each item must disappear, benefit one player and regenerate on both machines.
+For death drops the host runs the native throw and pickup. The guest sees the
+weapon at its host position. The regression has each player kill the other
+and collect the dropped PP7, then checks both ammo totals and removal.
+The suite also checks the winning score and rematch for each seat. Run
+`python port/lan/tests/restart.py build-pc/ge007.x86_64.exe data` to
+restart the guest during a firefight, then replace the host with a Temple
+host. The guest retains its position, inventory and score when returning
+to the same host. A fresh guest also sees the weapons still on the floor.
+A new host starts a fresh match.
+Add `--cold-pairs 12` to the restart test to exercise 24 fresh game
+processes. Each must deliver the four controller-init timer messages and
+enter Complex before the timeout.
+
+On Windows the fork controls also work in local multiplayer. Each controller
+operates its own equipment wheel with LB and the right stick. Player one
+can also use Tab and the arrow keys. To repeat the split-screen check, run
+`python port/lan/tests/splitscreen.py build-pc/ge007.x86_64.exe data`.
+It tests two local players selecting and using grenades on every retail
+arena, then tests four local players in Complex. Add `--arena Complex`
+to run just the two- and four-player Complex cases.
+
+To return to the Xbox dashboard from a menu or match, hold **LT + RT +
+Back + Black** together on one controller for 1.5 seconds.
 
 For a Windows distribution bundle, place `port/lan/Host-Complex.cmd` beside
-the executable. It prints the host's network addresses and starts the match.
+the executable. It starts the host with the LAN address visible in the game window.
 With a fresh asset-free bundle, place the retail US ROM at
 `data/ge007.ntsc-final.z64`. The launcher uses the bundled Python scripts
 and a Windows Python 3 installation for first-run conversion.
@@ -143,6 +203,140 @@ build-xbox/wheel-test
 ```
 
 ### Xbox frame pacing
+
+For a hardware measurement, place `ge-profile.on` beside `default.xbe`
+in a writable game directory. The Xbox appends seven-second samples to
+`ge-profile.csv` after a one-second warm-up. Columns are stage ID, LAN or
+split-screen, completed frames, elapsed microseconds, 95th-percentile
+and maximum frame interval in microseconds, minimum free KiB, and native
+shots across all seats. The four additional columns give the seat count,
+successfully launched player grenades, 99th-percentile frame interval in
+microseconds, and VBlanks elapsed during the sample, in that order. Earlier
+rows end after shots. The disk write occurs between samples. A stage load,
+including a rematch on the same arena, starts a fresh timing window.
+The same marker enables `ge-render.csv`. Each row covers the same window.
+The columns are stage, mode, frames, elapsed microseconds, shots, six mean
+durations in microseconds per frame (renderer including submission, NV2A draw
+submission, back-buffer acquisition, final GPU drain, present call, texture
+upload), then draw calls, input triangles, uploaded RGBA bytes, elapsed VBlanks
+and the sample number. Draw, triangle and byte counts are window totals. The
+draw and upload durations overlap the renderer duration. Final GPU drain
+measures the CPU wait after submission. Remove the marker to disable profiling.
+
+From the repository root, run the stationary Windows regression with
+`python port/lan/tests/egypt_firefight.py build-pc/ge007.x86_64.exe data build-pc/egypt-regression`.
+It starts two seats on a private loopback port and saves both traces and logs.
+Five guest framebuffers check the green ammo crate and the yellow-fill regression.
+Set `GE_WAKE_AB=1` before launching to compare the scheduler modes.
+
+For a frame-by-frame Egypt LAN trace, set `GE_FRAME_TRACE=1` on Windows or
+place `ge-trace.on` beside the Xbox executable. Keep `ge-profile.on` for the
+Xbox geometry and shot counters. A Windows host can set `GE_TRACE_EGYPT_PAD=0`
+to select the guest's native start facing the tan wall, with an ammo box on
+the left and columns on the right. The other five starts can run at very
+different rates. After two seconds of warm-up the game captures 24 seconds
+in memory and writes `ge-frame.bin` to the working directory or Xbox game
+folder. Return to XBMC to retrieve it. Remove `ge-trace.on` to disable the
+capture. Run `python port/lan/tests/frame_trace.py ge-frame.bin`. Each
+Xbox refresh observation reads the display controller's selected surface
+and joins its generation to the game frame and render task. Seat spans are
+wall time and include gameplay work.
+
+Normal LAN play skips draw-only calls for the hidden seat. For an in-match
+comparison, enable the frame trace plus `GE_LAN_DRAW_AB=1` on Windows or
+`ge-draw-ab.on` on Xbox. The 24-second window compares eight three-second
+blocks in the order ABBA BAAB. A draws and discards the hidden view, and B
+skips its draw-only calls. The analyzer excludes the first two frames per
+block and prints seat times, discarded bytes, display timing and geometry.
+Remove the comparison and trace markers after the measurement.
+
+Egypt LAN can also wake the scheduler when a graphics task is submitted.
+A real retrace still polls input, ticks music and notifies clients. The wake
+allows an eligible task to enter the normal SP/DP schedule sooner. To compare
+it with retrace-only scheduling, use `GE_WAKE_AB=1` or `ge-wake-ab.on` with
+the same trace setup. Use one comparison at a time. The analyzer reports the
+CPU wall time inside the backend draw callback and the remainder of visible
+display-list traversal. At each Xbox refresh the interrupt also samples the
+active render frame and which of those phases it was executing.
+
+To test material reuse across vertex loads, select `GE_MATERIAL_AB=1` on
+Windows or `ge-material-ab.on` beside the XBE with the frame trace enabled.
+The eight blocks keep early scheduling active and alternate the vertex-load
+optimization. The scheduler and hidden-view comparisons take precedence
+when selected. Ordinary Egypt LAN play keeps material state across vertex
+loads. Other arenas and local split-screen use their existing setup.
+
+To profile TRI4 at this camera, use `GE_TRI4_AB=1` with the Windows
+firefight regression or `ge-tri4-ab.on` alongside `ge-trace.on` on Xbox.
+Use only one A/B marker. This experiment compares the original backface
+test with exact projected coordinates cached for TRI4 vertex slots.
+`GE_VERIFY_TRI4_CULL=1` checks culling decisions on Windows; leave it unset
+when timing. The analyzer reports TRI4 time excluding nested backend draws,
+commands per frame, interrupt gaps and the time available before the target
+refresh. Remove the trace and comparison markers for regular play.
+
+To trace the scheduler handoff in Egypt, use `GE_PAIR_AB=1` on Windows or
+`ge-pair-ab.on` beside the Xbox executable together with the frame trace.
+Ordinary Egypt LAN play accepts an audio/graphics pair on an early wake.
+Both A/B conditions send the existing early graphics wake. The candidate also
+accepts a queued pair consisting of one audio task and one graphics task,
+appends them in FIFO order and lets the native scheduler select the task.
+The analyzer reports submission, command enqueue, servicing interrupt receive,
+list append and graphics handoff. A handler already running when the game
+enqueues the task contributes zero queue-to-receive time. Wake-post latency
+is measured separately, including wakes that find an empty command queue.
+Interrupt 666 is retrace, 670 is the control wake, and 671 is the candidate wake.
+
+For a stationary two-seat firing test, put the Windows host's IPv4 address
+and UDP port on one line of `ge-test-peer.txt` beside the XBE. With
+`ge-trace.on` present, the Xbox joins Egypt, pulses its normal trigger every
+650 ms, and requests a dashboard return 75 seconds after joining. The test
+uses native guest start 0 and ignores live gameplay input while recording.
+The physical reset chord remains available. Set `GE_TRACE_EGYPT_PAD=0` on
+the Windows host and give it the same scripted trigger cadence. Check for a
+level view of the wall, green ammo box and columns before comparing hardware
+intervals. For xemu user networking, put
+`10.0.2.2 27008` in the fixture and use `--lan-port 27008` on the host.
+With the trace marker removed, a successful join consumes the peer file on
+a writable game drive and leaves the controls with the player.
+
+For a trace revision, check a Windows boot with `GE_FRAME_TRACE_BOOT=1` and
+`python port/lan/tests/frame_trace.py --boot ge-frame.bin`. Then include
+`ge-boot-trace.on` in a private test DVD alongside the normal three game
+files. Boot that disc in a 64 MiB [xemu](https://github.com/xemu-project/xemu) profile using the 1 MiB [OXOS v0.4.14 BIOS](https://github.com/kooscode/oxos/releases/tag/v0.4.14),
+a writable Xbox disk and a loopback QMP monitor
+(`-qmp tcp:127.0.0.1:47771,server=on,wait=off`). After the title has
+rendered for six emulated seconds, run the following from the checkout.
+
+```sh
+python port/lan/tests/xemu_boot_trace.py --map build-xbox/world.map --port 47771 --output build-xbox/xemu-boot-trace.bin
+```
+
+Use the map from the same executable. The check reads the completed buffer
+from emulated memory and verifies each interior game, task, render and
+displayed surface ID. To exercise the LAN comparison in xemu, start a
+separate Windows Egypt host on UDP 27008. With xemu user networking enabled,
+put `ge-emu-join.on`, `ge-trace.on`, `ge-profile.on` and `ge-draw-ab.on` on
+the private test disc, omitting `ge-boot-trace.on`. The emulator guest joins
+the host at `10.0.2.2`. Read the buffer after the match trace completes.
+Use the physical Xbox to measure FPS and display timing.
+
+During a physical Xbox LAN sweep, each of the eleven arenas produced at least
+one seven-second sample with gunfire. The slowest such sample in Egypt averaged
+38.7 FPS with a 36 ms 95th-percentile frame interval. Stack reached 51.1 FPS
+and Caverns 52.5 FPS in their slowest firing samples. Temple averaged 59.9 FPS
+or better. These measurements cover the tested views and inputs.
+
+In a follow-up on the physical Xbox, a fixed Egypt camera alternated seven-second
+windows between the original and cached Fast3D material setup. Across four firing
+windows per path, throughput rose from 34.02 to 38.75 FPS, with CPU renderer work
+falling from 13.96 to 12.91 ms per frame. Both paths measured a 36 ms p95 frame
+interval in every firing window. A lighter Egypt view held 59.9 FPS on both.
+
+During a Complex LAN ammo test, the Xbox HUD showed 7 rounds loaded and
+92 in reserve after the pickup. Eighteen shots later it showed 3 and 78.
+The seven-second sample containing 13 shots averaged 60.0 FPS, with a
+19 ms 95th-percentile frame interval and 19,504 KiB of free physical memory.
 
 The Xbox renderer waits for a free back buffer, and the vertical-blank interrupt
 selects completed frames for display. The build applies Perfect Dark X's pbkit

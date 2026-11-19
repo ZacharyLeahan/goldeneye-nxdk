@@ -4,6 +4,19 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef main
+#undef main
+#endif
+
+#ifdef _WIN32
+#include "system.h"
+void sysLogPrintf(enum LogLevel level, const char *fmt, ...)
+{
+    (void)level;
+    (void)fmt;
+}
+#endif
+
 int main(int argc, char **argv)
 {
     if (argc != 2) return 2;
@@ -19,14 +32,21 @@ int main(int argc, char **argv)
         lanPoll();
         LanPose pose = origin;
         if (lanConnected() && !joined) joined = SDL_GetTicks();
-        if (joined && SDL_GetTicks()-joined > 300) { pose.z += 32; pose.yaw += 22; }
+        if (joined && SDL_GetTicks()-joined > 300) {
+            pose.z += 32; pose.yaw += 22;
+            pose.forward = host ? 1.25f : -0.75f;
+            pose.strafe = host ? -0.5f : 0.25f;
+            pose.run = host;
+        }
         lanPublish(&pose);
         LanPose other;
         if (lanRemote(&other)) {
             const int z = host ? 495 : 330;
             const int yaw = host ? 180 : 0;
             if (other.z == z && other.yaw == yaw) sawOrigin = 1;
-            if (other.z == z+32 && other.yaw == yaw+22) sawMovement = 1;
+            if (other.z == z+32 && other.yaw == yaw+22 &&
+                other.forward == (host ? -0.75f : 1.25f) &&
+                other.strafe == (host ? 0.25f : -0.5f) && other.run == !host) sawMovement = 1;
         }
         SDL_Delay(5);
     }

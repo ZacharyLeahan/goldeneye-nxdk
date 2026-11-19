@@ -3,6 +3,7 @@
 from pathlib import Path
 import json
 import re
+import subprocess
 import sys
 
 repo = Path(__file__).resolve().parents[3]
@@ -47,6 +48,25 @@ void xboxAcquireBackBuffer(void)
     }
 }
 """
+pbkit = '#include "port/lan/frame_trace.h"\nstatic unsigned ftSurfaceFrames[3];\n' + pbkit
+pbkit = adapt(pbkit, "    //insert in push buffer the commands to trigger screen swapping at next VBlank",
+              """    if (ftRecording()) {
+        __atomic_store_n(&ftSurfaceFrames[pb_back_index], ftRenderId, __ATOMIC_RELEASE);
+        ftRecord(FT_QUEUE, ftRenderId, pb_back_index);
+    }
+    //insert in push buffer the commands to trigger screen swapping at next VBlank""")
+pbkit = adapt(pbkit, "            pb_BackBufferbReady[next]=1;",
+              """            if (ftRecording()) ftRecord(FT_READY, __atomic_load_n(&ftSurfaceFrames[paramA], __ATOMIC_ACQUIRE), paramA);
+            pb_BackBufferbReady[next]=1;""")
+pbkit = adapt(pbkit, "if (pb_BackBufferbReady[pb_BackBufferNxtVBL]==1) VIDEOREG(PCRTC_START)=pb_FBAddr[pb_BackBufferIndex[pb_BackBufferNxtVBL]]&0x03FFFFFF;",
+              """if (pb_BackBufferbReady[pb_BackBufferNxtVBL]==1) VIDEOREG(PCRTC_START)=pb_FBAddr[pb_BackBufferIndex[pb_BackBufferNxtVBL]]&0x03FFFFFF;
+        if (ftRecording()) {
+            unsigned showing = VIDEOREG(PCRTC_START) & 0x03ffffffu;
+            unsigned i = 0;
+            while (i < 3 && (pb_FBAddr[i] & 0x03ffffffu) != showing) ++i;
+            ftRecord(FT_SCAN, i < 3 ? __atomic_load_n(&ftSurfaceFrames[i], __ATOMIC_ACQUIRE) : 0,
+                     ((uint64_t)ftRasterPhase() << 32) | i);
+        }""")
 emit("pbkit_present.c", pbkit)
 
 # All game units must see the same slot type, including quoted includes made
@@ -70,72 +90,64 @@ for typ in ("struct AnimModelSlot", "struct ModelSlot"):
 slots = adapt(slots, "extern struct AnimModelSlot *g_AnimModelSlots;",
               "\n".join(checks) + "\nextern struct AnimModelSlot *g_AnimModelSlots;")
 emit("objecthandler.h", "#include <stddef.h>\n" + slots)
+def clang_path(path):
+    # Native LLVM reads paths inside the JSON without MSYS argument conversion.
+    if sys.platform in ("msys", "cygwin"):
+        return subprocess.check_output(["cygpath", "-am", path], text=True).strip()
+    return str(path)
+
+
 emit("model_headers.json", json.dumps({"version": 0, "roots": [
-    {"type": "file", "name": str(slots_path), "external-contents": str(out.resolve() / "objecthandler.h")}
+    {"type": "file", "name": clang_path(slots_path),
+     "external-contents": clang_path(out.resolve() / "objecthandler.h")}
 ]}))
 
 
-for unit in ("lv", "spectrum", "image_bank", "objecthandler", "initunk_005450", "loadobjectmodel", "front", "bondview2"):
+sys.path.insert(0, str(repo / "port/lan"))
+from adapt import adapt as adapt_lan
+from mode_menu import generate as multiplayer_menu
+sys.path.insert(0, str(repo / "port/lan/tests"))
+from egypt_camera import generate as egypt_camera
+emit("bondview_r.c", egypt_camera((repo / "src/game/bondview_r.c").read_text()))
+emit("boss.c", adapt_lan("boss", (repo / "src/boss.c").read_text(), xbox=True))
+
+for unit in ("lv", "bg", "model", "spectrum", "image_bank", "objecthandler", "initunk_005450", "loadobjectmodel", "front", "bondview2", "gun", "propobj", "chrprop", "mpmenu"):
     src = (repo / f"src/game/{unit}.c").read_text()
+    if unit in ("lv", "bg", "model", "bondview2", "gun", "propobj", "chrprop", "mpmenu"):
+        src = adapt_lan(unit, src, xbox=True)
     # COFF has no ELF weak aliases. Alias the references within the original TU.
     src = re.sub(r'^#pragma weak (\w+) = (\w+)$', r'#define \1 \2', src, flags=re.M)
     if unit in ("image_bank", "objecthandler", "initunk_005450"):
         # These PC paths resolve cart offsets and linker labels, independently of pointer size.
         src = src.replace("#if defined(__x86_64__)", "#if defined(PORT)")
     if unit == "lv":
-        src = adapt(src, "DL = weaponRenderTracers(DL);",
-                    "extern Gfx *xboxDrawWorldPads(Gfx *);\n            DL = xboxDrawWorldPads(DL);\n            DL = weaponRenderTracers(DL);")
+        src = 'void xboxLoadCheckpoint(int stage, const char *step);\n' + src
+        for call in ("load_bg_file(g_CurrentStageToLoad);", "bodiesReset(stage);", "proplvreset2(stage);",
+                     "init_path_table_links();", "modelmgrSetLevelResetting(FALSE);"):
+            src = adapt(src, call, f'xboxLoadCheckpoint(stage, "{call.split("(")[0]}");\n    ' + call)
         # Start the downstream boot sequence inside the normal game scheduler.
         src = adapt(src, "menu_update = MENU_FILE_SELECT;",
                     "menu_update = MENU_RAREWARE_LOGO;")
     if unit == "bondview2":
-        src = adapt(src, "gunRenderFirstPersonGunModels(&gdl);",
-                    "if (!xboxDrawHeldPad(&gdl)) gunRenderFirstPersonGunModels(&gdl);")
-        entry = "void MoveBond(s8 stick_x, s8 stick_y, u16 buttons, u16 oldbuttons)"
-        src = adapt(src, entry, '#include "port/xbox/core/finals_game.inc"\n\n' + entry)
-        src = adapt(src, "bondviewProcessInput(stick_x, stick_y, buttons, oldbuttons);",
-                    "xboxFinalsProcessInput(stick_x, stick_y, buttons, oldbuttons);")
         # Animation decelerates over several ticks. During a grab, the mantle
         # path owns horizontal displacement, including on a long frame.
         src = adapt(src, "start_collision_pos_x = g_CurrentPlayer->field_488.collision_position.f[0];",
                     "if (traversal->mantle.active) move_offset.x = move_offset.z = 0;\n        "
                     "start_collision_pos_x = g_CurrentPlayer->field_488.collision_position.f[0];")
-        src = adapt(src, "bondviewUpdatePlayerY(use_stanHeight, sp390);",
-                    "xboxFinalsVertical(&use_stanHeight, &sp390);\n    bondviewUpdatePlayerY(use_stanHeight, sp390);")
     if unit == "front":
-        # Only Complex has converted multiplayer stage data in xbox.bin.
-        # Use the stock disabled-tile rendering for every unavailable arena.
+        # Keep Complex as the downstream default. The Xbox has no campaign
+        # progression to unlock arenas, so enforce their native seat limits.
         default = "MP_stage_selected = MP_STAGE_TEMPLE;"
         if src.count(default) != 3:
             raise ValueError("Review upstream multiplayer default and fallback arenas")
         src = src.replace(default, "MP_stage_selected = MP_STAGE_COMPLEX;")
-        check = "s32 check_if_mp_stage_unlocked(s32 stage)\n{\n    s32 players;"
-        src = adapt(src, check, check + "\n    if (stage != MP_STAGE_COMPLEX) return FALSE;")
+        check = "if (multi_stage_setups[stage].unlock_after == -1)"
+        src = adapt(src, check, "if (stage >= MP_STAGE_RANDOM && stage <= MP_STAGE_EGYPT)")
         src = adapt(src, "current_mp_stage_highlighted = MP_STAGE_RANDOM;",
                     "current_mp_stage_highlighted = MP_stage_selected;")
-        src = adapt(src, """while (check_if_mp_stage_unlocked(current_mp_stage_highlighted) == 0)
-            {
-                current_mp_stage_highlighted = current_mp_stage_highlighted - 1;
-            }""", """if (!check_if_mp_stage_unlocked(current_mp_stage_highlighted))
-                current_mp_stage_highlighted = -1;""")
         src = adapt(src, "if (isGunBarrelInMode2())\n    {\n        frontChangeMenu(MENU_EYE_INTRO, TRUE);",
                     "if (isGunBarrelInMode2())\n    {\n        frontChangeMenu(is_first_time_on_main_menu ? MENU_EYE_INTRO : MENU_FILE_SELECT, TRUE);")
-        marker = "void init_menu06_modeselect(void)\n{"
-        src = adapt(src, marker, '#include "port/xbox/core/mode_menu.inc"\n\n' +
-                    marker + "\n    lanClose(); lanEditor = 0; xboxModeMessage = NULL;")
-        entry = "    if (frontCheckCursorOnPreviousTab())"
-        idx = src.index(entry, src.index("void interface_menu06_modesel(void)\n{"))
-        src = src[:idx] + "    if (lanEditor) { xboxLanEditorTick(); return; }\n" + src[idx:]
-        # Leave dossier setup, the previous tab and actual menu transitions
-        # upstream. Only the downstream mode rows and hit zones differ.
-        start = src.index("    else if ((is_cheat_menu_available) && (275.0f <= cursor_v_pos))")
-        end = src.index("    if (joyGetButtonsPressedThisFrame(PLAYER_1, B_BUTTON))", start)
-        src = src[:start] + "    else xboxChooseMode();\n\n" + src[end:]
-        start = src.index("    x = 0x96;", src.index("Gfx* constructor_menu06_modesel(Gfx* DL)\n{"))
-        end = src.index("    DL = frontAddPreviousTabText(DL);", start)
-        src = src[:start] + "    DL = xboxDrawModeRows(DL);\n" + src[end:]
-        src = adapt(src, "cursor_v_pos = mode * 0x20 + 0xe2;",
-                    "cursor_v_pos = mode == GAMEMODE_MULTI ? 290.0f : 226.0f;")
+        src = multiplayer_menu(src, xbox=True)
     if unit == "loadobjectmodel":
         # The PORT branch hardcodes LP64 setup-record sizes. The original
         # ILP32 switch walks the exact record layout emitted by assets.py.
@@ -146,10 +158,6 @@ for unit in ("lv", "spectrum", "image_bank", "objecthandler", "initunk_005450", 
     if unit == "spectrum":
         src = src.replace("#define spec_keyboard_row_caps_z_x_c_v spec_keyboard_buffer",
                           "#define spec_keyboard_row_caps_z_x_c_v spec_keyboard_buffer[0]")
-    if unit in ("lv", "bondview2"):
-        sys.path.insert(0, str(repo / "port/lan"))
-        from adapt import adapt as adapt_lan
-        src = adapt_lan(unit, src)
     emit(f"{unit}.c", src)
 
 rom = (repo / "port/src/romdata.c").read_text()

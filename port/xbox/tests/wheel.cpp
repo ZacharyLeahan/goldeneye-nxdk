@@ -2,6 +2,10 @@
 #include "../finals_controls.cpp"
 #include <cassert>
 
+#ifdef main
+#undef main
+#endif
+
 static Uint32 ticks;
 extern "C" Uint32 SDL_GetTicks(void) { return ticks; }
 extern "C" bool xboxDrawWheel(int,int,int,int,int,const uint32_t *) { return true; }

@@ -1,7 +1,7 @@
 # Both architectures hash the movement protocol and native integration. Normalize
 # checkout EOLs so a normal Windows autocrlf checkout gets the same identity.
 set(lan_signature "ntsc-final/complex/2")
-foreach(name lan.c lan.h pose.inc adapt.py)
+foreach(name lan.c lan.h pose.inc inventory.inc drops.inc adapt.py ../xbox/core/finals_game.inc)
   set(path "${CMAKE_CURRENT_LIST_DIR}/${name}")
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${path}")
   file(READ "${path}" contents)

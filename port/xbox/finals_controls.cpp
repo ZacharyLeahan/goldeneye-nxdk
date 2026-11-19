@@ -2,10 +2,28 @@
 #include "finals_controls.h"
 #include <SDL.h>
 #include <algorithm>
-#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <vector>
+
+// The decomp supplies its own math.h declarations, which conflict with the
+// MinGW C++ standard-library declarations.  Keep this shared Xbox/Windows
+// source independent of either header and bind the generated math directly to
+// compiler builtins.
+#define tan(x) __builtin_tan(x)
+#define hypot(x, y) __builtin_hypot((x), (y))
+#define fmin(x, y) __builtin_fmin((x), (y))
+#define fmax(x, y) __builtin_fmax((x), (y))
+#define fabs(x) __builtin_fabs(x)
+#define atan2f(y, x) __builtin_atan2f((y), (x))
+#define sinf(x) __builtin_sinf(x)
+#define cosf(x) __builtin_cosf(x)
+#define hypotf(x, y) __builtin_hypotf((x), (y))
+#define floorf(x) __builtin_floorf(x)
+#define ceilf(x) __builtin_ceilf(x)
+#define fminf(x, y) __builtin_fminf((x), (y))
+#define fmaxf(x, y) __builtin_fmaxf((x), (y))
+#define fabsf(x) __builtin_fabsf(x)
 
 #include "finals_constants.h"
 #define GRENADE_ITEM 26

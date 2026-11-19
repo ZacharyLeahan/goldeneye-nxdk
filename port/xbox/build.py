@@ -70,7 +70,7 @@ def main():
                 (staging / "xbox.bin").write_bytes(pack(data))
                 shutil.copyfile(build / "default.xbe", staging / "default.xbe")
                 image = Path(temp) / "ge007.iso"
-                subprocess.run([xiso, "-c", str(staging), str(image)], env=env, check=True)
+                subprocess.run([xiso, "-c", staging.name, image.name], cwd=temp, env=env, check=True)
                 install = build / "disc"
                 install.mkdir(exist_ok=True)
                 for item in staging.iterdir():

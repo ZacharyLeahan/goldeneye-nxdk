@@ -16,7 +16,7 @@ static u32 count;
 
 void xboxMountResources(u8 *cart, u32 cartSize, const u8 *pack, u32 size)
 {
-    if (size < 8 || memcmp(pack, "GE32", 4)) sysFatalError("Invalid Xbox resource pack");
+    if (size < 8 || memcmp(pack, "GE33", 4)) sysFatalError("Install xbox.bin from the same build as default.xbe");
     count = ((const u32 *)pack)[1];
     if (count > (size - 8) / sizeof(XboxResource)) sysFatalError("Invalid Xbox resource count");
     resources = (const XboxResource *)(pack + 8);

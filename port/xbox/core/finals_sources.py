@@ -4,6 +4,7 @@ The Xbox build reuses the controller response, wheel and traversal algorithms.
 It supplies native engine symbols and per-player state for the GE32 hooks.
 """
 from pathlib import Path
+import sys
 
 
 def generate(root: Path, emit):
@@ -80,3 +81,15 @@ def generate(root: Path, emit):
             raise ValueError(f"Review fork traversal binding: {old}")
         source = source.replace(old, new)
     emit("finals_traversal.inc", source.replace("mantle.", "traversal->mantle.").replace("slide.", "traversal->slide."))
+
+
+if __name__ == "__main__":
+    root, output = map(Path, sys.argv[1:3])
+    output.mkdir(parents=True, exist_ok=True)
+
+    def write(name, source):
+        path = output / name
+        if not path.is_file() or path.read_text() != source:
+            path.write_text(source)
+
+    generate(root, write)
