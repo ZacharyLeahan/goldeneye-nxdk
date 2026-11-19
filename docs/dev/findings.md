@@ -746,6 +746,7 @@ covers D24–D69; the log continues in §H (D32 procedure, D70–D121).
 | D593 | Retain triangle material across vertex loads in the Egypt LAN view. | MEASURED |
 | D594 | Trace TRI4 at the heavy Egypt LAN camera and measure projected-coordinate reuse. | MEASURED |
 | D595 | Accept a mixed audio/graphics command pair on the early Egypt LAN wake. | FIXED |
+| D596 | Initialize Xbox local multiplayer from all connected pads and verify four seats in xemu. | FIXED (four-player xemu; four-pad hardware pass owed) |
 | D407 | **Tanks cannot be boarded/exited on PC — the v0.4.0 use/reload split (D378/D393) removed the B-button tap the engine's tank handlers in `bondview2.c` consume (user report 2026-09-28, Runway/Streets)** — full `## D407` entry at file tail | **CLOSED (2026-09-28 bookkeeping: tank board/exit accepted by the user; shipped in v0.4.0).** Earlier: PARTIAL (fix landed in v0.4.0, port-only): present `GE_CONT_B` on the use (E / pad A) rising edge only while `g_PlayerIsInTank == 1` or `g_BondCanEnterTank != 0`; E keeps its D378 no-reload-fallback semantics elsewhere, N64 layout unaffected. D407(b) same cycle: front PC Options page-edge highlight clamp + mouse-wheel / W-S paging (wheel queue consumed on the menu, D223); its wheel mapping shipped inverted and was fixed to match W/S (wheel up = step up). D407(c): board-animation lockout, menu-accept B gate in tank states, in-tank aim routed through the legacy velocity stick + `Input.TankAimScale` knob. RESOLVED 2026-09-28: all port-only (src/game zero-diff), 10 TANKDBG probes stripped, release binary verified clean, user live tank drive signed off (board + exit OK, aim feel good). |
 | D408 | **`Game.SkipIntro` skips the post-mission failure dossier: with it on, entering a level then aborting (watch Z+A) or dying (KIA) returns straight to the menus — no REPORT / "Mission status: KILLED IN ACTION / ABORTED" screen** (user report 2026-09-28; save/AllUnlocked ruled out) — full `## D408` entry at file tail | FIXED 2026-09-30 (SkipIntro hook gated to first boot; live dossier check owed). |
 | D415 | **Shooting a light fixture does not "kill" its flickering light (Bunker, Caverns): the fixture takes the hit but the flicker keeps going (community report, issue #87 comment by the reporter, 2026-09-28, 00 Agent playthrough of v0.4.0).** — full `## D415` entry at file tail | FIXED (2026-09-29 bookkeeping: root-caused and fixed as D430 + D431, user-verified vs GEPD/1964 on Caverns 2026-09-29; #119). Earlier: ROOT-CAUSED as D430 (see there); fix in tree, live check owed. |
@@ -18899,3 +18900,22 @@ Every candidate block remained faster than every control block. The remaining
 eight observed candidate repeats occurred in display-list processing or draw
 submission. Egypt LAN uses this wake in normal play. See [the scheduler trace,
 validation and trial limits](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7015760434).
+
+## D596 — Four-player local setup on Xbox (2026-11-19)
+
+The Xbox controller backend and renderer already kept four pad slots and four
+viewports. The local-mode row did not initialize the multiplayer player count,
+however. The native options page only derives that count from connected pads
+when `selected_num_players` is zero, so a previous two-player or LAN setup
+could leave local play at two with four Xbox ports populated.
+
+The Xbox local transition now calls `init_mp_options_for_scenario` with the
+connected-pad count, clamped to the native two-to-four-player range. LAN stays
+exactly two-player. This is a port-layer menu fix; the game logic is unchanged.
+
+The nxdk target linked cleanly and a private XISO built with
+`--local-four-test` booted four-player Complex in xemu 0.8.139. The observed
+framebuffer contained four simultaneous viewports at distinct spawn positions
+with a marker for every player. The opt-in marker supplies idle seats only and
+is absent from normal packages. A four-controller pass on original Xbox
+hardware remains owed.

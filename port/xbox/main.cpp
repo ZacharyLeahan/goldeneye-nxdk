@@ -252,6 +252,11 @@ int main()
     audioInit();
     mixerInit();
     if (inputInit()) sysFatalError("Controller initialization failed");
+    if (FILE *marker = fopen("D:\\ge-local-four.on", "rb")) {
+        fclose(marker);
+        inputStartLocalFourTest();
+        serialPuts("local four-player emulator fixture enabled\r\n");
+    }
     // A private benchmark can join directly, including on a controllerless rig.
     DWORD testStarted = 0;
     char hostAddress[32] = {};

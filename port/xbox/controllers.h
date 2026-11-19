@@ -7,6 +7,8 @@ extern "C" {
 #endif
 
 void inputStartEgyptTest(void);
+void inputStartLocalFourTest(void);
+int xboxLocalFourTestActive(void);
 int inputInit(void);
 void inputUpdate(void);
 int inputConnectedMask(void);

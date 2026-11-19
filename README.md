@@ -4,7 +4,7 @@ Play split-screen on one machine, or give each player a full screen on the same 
 
 | Mode | How to play |
 | --- | --- |
-| **Local Multiplayer** | Connect two controllers, select **Local Multiplayer**, then choose the arena and rules in Multiplayer Options. Two-player firefights have been tested on original Xbox. Windows also supports four-player split-screen on maps with four starts. |
+| **Local Multiplayer** | Connect two to four controllers, select **Local Multiplayer**, then choose the arena and rules in Multiplayer Options. Two-player firefights have been tested on original Xbox hardware. Four-player split-screen has been verified in xemu on Complex; a four-pad hardware pass is still owed. |
 | **LAN Multiplayer** | One Windows PC hosts a two-player match. An original Xbox or another Windows PC joins by entering the host’s LAN IPv4 address. Each player has a full-screen view. The host tracks hits, kills, pickups, scores and rematches. |
 
 On Xbox, select a dossier to see both modes. On Windows, open **Multiplayer** in the dossier. For LAN, choose **Host Match** on Windows, then **Join Match** on the other PC or **LAN Multiplayer** on Xbox. Enter the address shown by the host. The default is Complex on UDP 27007. The host and guest should run builds from the same revision.
