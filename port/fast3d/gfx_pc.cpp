@@ -1,5 +1,6 @@
 #define NOMINMAX
 
+#include "../lan/frame_trace.h"
 #include "floatvtx.h" /* D245 */
 #include <cmath>
 #include <cstdint>
@@ -355,11 +356,44 @@ static constexpr float clampf(const float x, const float min, const float max) {
 /* #92 perf probe (GE_PERFSTAT=1): per-frame counters, see gfx_run. */
 static uint64_t s_perf_batches = 0, s_perf_tris = 0;
 
+static bool traceVisibleList, traceTri4, projectTri4;
+static unsigned projectedSlots;
+struct CullPosition { float x, y; };
+static CullPosition projected[16]; // TRI4 indices are four bits.
+
+static void invalidateCullPositions(size_t first, size_t count)
+{
+    if (projectTri4 && first < 16) {
+        unsigned length = count < 16 ? (unsigned)count : 16;
+        projectedSlots &= ~(((1u << length) - 1u) << first);
+    }
+}
+
+static const CullPosition &cullPosition(unsigned slot, const LoadedVertex *v)
+{
+    if (!(projectedSlots & (1u << slot))) {
+        projected[slot] = {v->x / v->w, v->y / v->w};
+        projectedSlots |= 1u << slot;
+    }
+    return projected[slot];
+}
+
+static inline float originalCullCross(const LoadedVertex *v1, const LoadedVertex *v2, const LoadedVertex *v3)
+{
+    float dx1 = v1->x / (v1->w) - v2->x / (v2->w);
+    float dy1 = v1->y / (v1->w) - v2->y / (v2->w);
+    float dx2 = v3->x / (v3->w) - v2->x / (v2->w);
+    float dy2 = v3->y / (v3->w) - v2->y / (v2->w);
+    return dx1 * dy2 - dy1 * dx2;
+}
+
 static void gfx_flush(void) {
     if (buf_vbo_len > 0) {
         s_perf_batches++;
         s_perf_tris += buf_vbo_num_tris;
+        uint64_t drawStarted = traceVisibleList ? ftDrawBegin() : 0;
         gfx_rapi->draw_triangles(buf_vbo, buf_vbo_len, buf_vbo_num_tris);
+        if (drawStarted) ftDrawEnd(drawStarted);
         buf_vbo_len = 0;
         buf_vbo_num_tris = 0;
     }
@@ -2113,6 +2147,7 @@ static void gfx_sp_vertex(size_t n_vertices, size_t dest_index, const Vtx* verti
         return; /* D146 */
     }
 
+    invalidateCullPositions(dest_index, n_vertices);
     for (size_t i = 0; i < n_vertices; i++, dest_index++) {
         const Vtx* v = &vertices[i];
         struct LoadedVertex* d = &rsp.loaded_vertices[dest_index];
@@ -2417,84 +2452,26 @@ static inline int gfx_lod_tile_offset(const int i) {
     return i;
 }
 
-static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bool is_rect) {
-    /* D75D: only real model triangles (all indices < MAX_VERTICES); the
-     * fullscreen-quad helpers use indices MAX_VERTICES+0..3 and would skew maxtri. */
-    if (vtx1_idx < MAX_VERTICES && vtx2_idx < MAX_VERTICES && vtx3_idx < MAX_VERTICES) {
-        uint32_t d75d_mx = vtx1_idx > vtx2_idx ? (vtx1_idx > vtx3_idx ? vtx1_idx : vtx3_idx)
-                                               : (vtx2_idx > vtx3_idx ? vtx2_idx : vtx3_idx);
-        if (tri_dbg()) d75d_note_tri(videoGetFrameCount(), d75d_mx);
-    }
-    struct LoadedVertex* v1 = &rsp.loaded_vertices[vtx1_idx];
-    struct LoadedVertex* v2 = &rsp.loaded_vertices[vtx2_idx];
-    struct LoadedVertex* v3 = &rsp.loaded_vertices[vtx3_idx];
-    struct LoadedVertex* v_arr[3] = { v1, v2, v3 };
+struct TriangleMaterial {
+    bool use_alpha, use_fog, use_grayscale, use_modulate;
+    ColorCombiner *comb;
+    uint32_t tm, tex_width[2], tex_height[2], tex_width2[2], tex_height2[2];
+    bool wrap_s[2], wrap_t[2];
+    float wrap_tw[2], wrap_th[2], wrap_uls[2], wrap_ult[2];
+    uint8_t num_inputs;
+    bool used_textures[2];
+    GfxClipParameters clip_parameters;
+};
 
-    if ((rsp.extra_geometry_mode & G_NO_CLIPPING_EXT) == 0) {
-        /* D233: the outcode bits set in gfx_sp_vertex (x<-w / x>w / y<-w /
-         * y>w / z>w) are only valid half-space tests when w>0. A vertex
-         * that has crossed behind the camera plane (w<0) flips the sense of
-         * those comparisons, so its clip_rej bits can come out wrong. If
-         * that spurious bit happens to match the other two (genuinely
-         * correct) vertices' bits, the AND-reduction below fires and drops
-         * the whole triangle before it ever reaches the GPU -- even though
-         * OpenGL's own homogeneous clipper (which handles w<0 correctly)
-         * would have rendered the visible portion of it. This hits large
-         * polygons near the camera (room walls/ceilings near a doorway,
-         * where the camera is close enough for a vertex to sit behind it)
-         * far more than small prop models, matching D233's "room geometry
-         * intermittently vanishes near doors, furniture/terminals still
-         * draw" report. Fix: never trust the trivial-reject AND test when
-         * any vertex has a negative w -- defer to GL's clipper instead,
-         * same as the backface-cull code just below already does for the
-         * same w-sign hazard. Worst case for the (rare) mixed-sign case is
-         * a few extra triangles reaching the GPU; never fewer. */
-        bool any_behind_camera = (v1->w < 0) || (v2->w < 0) || (v3->w < 0);
-        if (!any_behind_camera && (v1->clip_rej & v2->clip_rej & v3->clip_rej)) {
-            // The whole triangle lies outside the visible area
-            if (tri_dbg()) d75d_note_rej(videoGetFrameCount(), 0);
-            return;
-        }
-    }
+// TRI1 and TRI4 consume vertices without changing display-list state. All
+// other opcodes, including nested list calls and synthetic rectangles,
+// break a run. Per-triangle clipping and shading still run for every draw.
+static TriangleMaterial material;
+static bool triangleMaterialReady;
+static bool reuseVertexMaterial;
 
-    if ((rsp.geometry_mode & G_CULL_BOTH) != 0) {
-        float dx1 = v1->x / (v1->w) - v2->x / (v2->w);
-        float dy1 = v1->y / (v1->w) - v2->y / (v2->w);
-        float dx2 = v3->x / (v3->w) - v2->x / (v2->w);
-        float dy2 = v3->y / (v3->w) - v2->y / (v2->w);
-        float cross = dx1 * dy2 - dy1 * dx2;
-
-        if ((v1->w < 0) ^ (v2->w < 0) ^ (v3->w < 0)) {
-            // If one vertex lies behind the eye, negating cross will give the correct result.
-            // If all vertices lie behind the eye, the triangle will be rejected anyway.
-            cross = -cross;
-        }
-
-        // If inverted culling is requested, negate the cross
-        // if ((rsp.extra_geometry_mode & G_EX_INVERT_CULLING) == 1) {
-        //     cross = -cross;
-        // }
-
-        switch (rsp.geometry_mode & G_CULL_BOTH) {
-            case G_CULL_FRONT:
-                if (cross <= 0) {
-                    if (tri_dbg()) d75d_note_rej(videoGetFrameCount(), 1);
-                    return;
-                }
-                break;
-            case G_CULL_BACK:
-                if (cross >= 0) {
-                    if (tri_dbg()) d75d_note_rej(videoGetFrameCount(), 1);
-                    return;
-                }
-                break;
-            case G_CULL_BOTH:
-                // Why is this even an option?
-                if (tri_dbg()) d75d_note_rej(videoGetFrameCount(), 1);
-                return;
-        }
-    }
-
+static void prepareTriangleMaterial() {
+    material = {};
     bool depth_test = ((rsp.geometry_mode & G_ZBUFFER) == G_ZBUFFER || (rdp.other_mode_l & G_ZS_PRIM) == G_ZS_PRIM) &&
                       ((rdp.other_mode_h & G_CYC_1CYCLE) == G_CYC_1CYCLE || (rdp.other_mode_h & G_CYC_2CYCLE) == G_CYC_2CYCLE);
     bool depth_update = (rdp.other_mode_l & Z_UPD) == Z_UPD;
@@ -2524,9 +2501,9 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     }
 
     uint64_t cc_options = 0;
-    bool use_alpha =
+    material.use_alpha =
         (rdp.other_mode_l & (3 << 20)) == (G_BL_CLR_MEM << 20) && (rdp.other_mode_l & (3 << 16)) == (G_BL_1MA << 16);
-    const bool use_fog = ((rdp.other_mode_l >> 30) == G_BL_CLR_FOG) || ((rdp.other_mode_l >> 26) == G_BL_A_FOG);
+    material.use_fog = ((rdp.other_mode_l >> 30) == G_BL_CLR_FOG) || ((rdp.other_mode_l >> 26) == G_BL_A_FOG);
     /* D266: G_AC_DECAL (alphacompare == 2) never discards, so it must not
      * take the texedge path at all; NONE/THRESHOLD/DITHER are distinguished
      * in gfx_opengl.cpp via the existing options. */
@@ -2536,18 +2513,18 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     const bool use_2cyc = (rdp.other_mode_h & (3U << G_MDSFT_CYCLETYPE)) == G_CYC_2CYCLE;
     const bool alpha_threshold = (rdp.other_mode_l & (3U << G_MDSFT_ALPHACOMPARE)) == G_AC_THRESHOLD;
     const bool invisible = (rdp.other_mode_l & (3 << 24)) == (G_BL_0 << 24) && (rdp.other_mode_l & (3 << 20)) == (G_BL_CLR_MEM << 20);
-    const bool use_grayscale = rdp.grayscale;
-    const bool use_modulate = use_alpha && (rsp.extra_geometry_mode & G_MODULATE_EXT) != 0;
+    material.use_grayscale = rdp.grayscale;
+    material.use_modulate = material.use_alpha && (rsp.extra_geometry_mode & G_MODULATE_EXT) != 0;
     const bool use_blur = (rdp.other_mode_h & (3U << G_MDSFT_TEXTFILT)) == G_TF_BLUR_EXT;
 
     if ((rdp.other_mode_l & CVG_X_ALPHA) == CVG_X_ALPHA) {
-        use_alpha = true;
+        material.use_alpha = true;
     }
 
-    if (use_alpha) {
+    if (material.use_alpha) {
         cc_options |= (uint64_t)SHADER_OPT_ALPHA;
     }
-    if (use_fog) {
+    if (material.use_fog) {
         cc_options |= (uint64_t)SHADER_OPT_FOG;
     }
     if (texture_edge) {
@@ -2565,7 +2542,7 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     if (invisible) {
         cc_options |= (uint64_t)SHADER_OPT_INVISIBLE;
     }
-    if (use_grayscale) {
+    if (material.use_grayscale) {
         cc_options |= (uint64_t)SHADER_OPT_GRAYSCALE;
     }
     if (use_blur) {
@@ -2573,7 +2550,7 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     }
 
     // If we are not using alpha, clear the alpha components of the combiner as they have no effect
-    if (!use_alpha) {
+    if (!material.use_alpha) {
         cc_options &= ~((0xfff << 16) | ((uint64_t)0xfff << 44));
     }
 
@@ -2581,10 +2558,9 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     key.combine_mode = rdp.combine_mode;
     key.options = cc_options;
 
-    ColorCombiner* comb = gfx_lookup_or_create_color_combiner(key);
+    material.comb = gfx_lookup_or_create_color_combiner(key);
 
-    uint32_t tm = 0;
-    uint32_t tex_width[2], tex_height[2], tex_width2[2], tex_height2[2];
+    material.tm = 0;
 
     /* D74 (Video.WrapFix): per-texunit pre-wrap window. N64 wraps a render
      * tile's UVs at the TILE period (uls/ult + lrs/lrt window) when the tile
@@ -2593,14 +2569,11 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
      * CLAMP-clearing below) and applied per vertex in the loop. Opt-in --
      * this path never ran before (the old guard was `cms & G_TX_WRAP` ==
      * `& 0`), so it is new behaviour. */
-    bool  wrap_s[2] = { false, false }, wrap_t[2] = { false, false };
-    float wrap_tw[2] = { 0, 0 }, wrap_th[2] = { 0, 0 };
-    float wrap_uls[2] = { 0, 0 }, wrap_ult[2] = { 0, 0 };
 
     for (int i = 0; i < 2; i++) {
         // TODO: fix this; for now just ignore smaller mips
         const uint32_t tile = rdp.first_tile_index + gfx_lod_tile_offset(i);
-        if (comb->used_textures[i]) {
+        if (material.comb->used_textures[i]) {
             if (rdp.textures_changed[i]) {
                 gfx_flush();
                 import_texture(i, tile, false);
@@ -2617,7 +2590,7 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
                 line_size = 1;
             }
 
-            tex_height[i] = tex_size_bytes / line_size;
+            material.tex_height[i] = tex_size_bytes / line_size;
             switch (rdp.texture_tile[tile].siz) {
                 case G_IM_SIZ_4b:
                     line_size <<= 1;
@@ -2629,10 +2602,10 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
                     break;
                 case G_IM_SIZ_32b:
                     line_size /= G_IM_SIZ_32b_LINE_BYTES; // this is 2!
-                    tex_height[i] /= 2;
+                    material.tex_height[i] /= 2;
                     break;
             }
-            tex_width[i] = line_size;
+            material.tex_width[i] = line_size;
             /* D245 (M-201): D229 water (RGBA16 tile over a CI8 load) is
              * imported as CI8 -- one byte per texel, base level only -- so the
              * UV normalisation must use that geometry: width = line bytes
@@ -2643,30 +2616,30 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
                 if (rdp.texture_tile[tile].fmt == G_IM_FMT_RGBA &&
                     rdp.texture_tile[tile].siz == G_IM_SIZ_16b && ltx.src_fmt == G_IM_FMT_CI) {
                     const uint8_t mkt = rdp.texture_tile[tile].maskt;
-                    tex_width[i] = rdp.texture_tile[tile].line_size_bytes;
-                    if (mkt > 0 && mkt < 12 && tex_height[i] > (1u << mkt)) tex_height[i] = 1u << mkt;
+                    material.tex_width[i] = rdp.texture_tile[tile].line_size_bytes;
+                    if (mkt > 0 && mkt < 12 && material.tex_height[i] > (1u << mkt)) material.tex_height[i] = 1u << mkt;
                 }
             }
 
-            tex_width2[i] = (rdp.texture_tile[tile].lrs - rdp.texture_tile[tile].uls + 4) / 4;
-            tex_height2[i] = (rdp.texture_tile[tile].lrt - rdp.texture_tile[tile].ult + 4) / 4;
+            material.tex_width2[i] = (rdp.texture_tile[tile].lrs - rdp.texture_tile[tile].uls + 4) / 4;
+            material.tex_height2[i] = (rdp.texture_tile[tile].lrt - rdp.texture_tile[tile].ult + 4) / 4;
 
-            uint32_t tex_width1 = tex_width[i] << (cms & G_TX_MIRROR);
-            uint32_t tex_height1 = tex_height[i] << (cmt & G_TX_MIRROR);
+            uint32_t tex_width1 = material.tex_width[i] << (cms & G_TX_MIRROR);
+            uint32_t tex_height1 = material.tex_height[i] << (cmt & G_TX_MIRROR);
 
             if (g_wrap_fix && !(cms & G_TX_MIRROR)) {
                 /* (a) sub-tile window: wrap tile (clamp bit not set) whose
                  * uls..lrs window is smaller than the uploaded image -> pre-fmod
                  * the UVs at the window size. */
-                if (!(cms & G_TX_CLAMP) && tex_width2[i] > 0 && tex_width2[i] < tex_width[i]) {
-                    wrap_s[i]   = true;
-                    wrap_tw[i]  = (float)tex_width2[i];
-                    wrap_uls[i] = rdp.texture_tile[tile].uls / 4.0f;
+                if (!(cms & G_TX_CLAMP) && material.tex_width2[i] > 0 && material.tex_width2[i] < material.tex_width[i]) {
+                    material.wrap_s[i]   = true;
+                    material.wrap_tw[i]  = (float)material.tex_width2[i];
+                    material.wrap_uls[i] = rdp.texture_tile[tile].uls / 4.0f;
                 }
-                if (!(cmt & G_TX_CLAMP) && tex_height2[i] > 0 && tex_height2[i] < tex_height[i]) {
-                    wrap_t[i]   = true;
-                    wrap_th[i]  = (float)tex_height2[i];
-                    wrap_ult[i] = rdp.texture_tile[tile].ult / 4.0f;
+                if (!(cmt & G_TX_CLAMP) && material.tex_height2[i] > 0 && material.tex_height2[i] < material.tex_height[i]) {
+                    material.wrap_t[i]   = true;
+                    material.wrap_th[i]  = (float)material.tex_height2[i];
+                    material.wrap_ult[i] = rdp.texture_tile[tile].ult / 4.0f;
                 }
                 /* (b) RC3 non-power-of-two wrap period: the N64 RDP masks the
                  * texel coordinate at 1<<mask (GE sets mask = ceil(log2(dim)),
@@ -2678,31 +2651,31 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
                 {
                     uint8_t mks = rdp.texture_tile[tile].masks;
                     uint8_t mkt = rdp.texture_tile[tile].maskt;
-                    if (!wrap_s[i] && !(cms & G_TX_CLAMP) && mks >= 1 && mks <= 14) {
+                    if (!material.wrap_s[i] && !(cms & G_TX_CLAMP) && mks >= 1 && mks <= 14) {
                         float period = (float)(1u << mks);
-                        if (period != (float)tex_width[i] && tex_width[i] > 0) {
-                            wrap_s[i]   = true;
-                            wrap_tw[i]  = period;
-                            wrap_uls[i] = 0.0f;
+                        if (period != (float)material.tex_width[i] && material.tex_width[i] > 0) {
+                            material.wrap_s[i]   = true;
+                            material.wrap_tw[i]  = period;
+                            material.wrap_uls[i] = 0.0f;
                         }
                     }
-                    if (!wrap_t[i] && !(cmt & G_TX_CLAMP) && mkt >= 1 && mkt <= 14) {
+                    if (!material.wrap_t[i] && !(cmt & G_TX_CLAMP) && mkt >= 1 && mkt <= 14) {
                         float period = (float)(1u << mkt);
-                        if (period != (float)tex_height[i] && tex_height[i] > 0) {
-                            wrap_t[i]   = true;
-                            wrap_th[i]  = period;
-                            wrap_ult[i] = 0.0f;
+                        if (period != (float)material.tex_height[i] && material.tex_height[i] > 0) {
+                            material.wrap_t[i]   = true;
+                            material.wrap_th[i]  = period;
+                            material.wrap_ult[i] = 0.0f;
                         }
                     }
                 }
             }
 
-            if ((cms & G_TX_CLAMP) && ((cms & G_TX_MIRROR) || tex_width1 != tex_width2[i])) {
-                tm |= 1 << 2 * i;
+            if ((cms & G_TX_CLAMP) && ((cms & G_TX_MIRROR) || tex_width1 != material.tex_width2[i])) {
+                material.tm |= 1 << 2 * i;
                 cms &= ~G_TX_CLAMP;
             }
-            if ((cmt & G_TX_CLAMP) && ((cmt & G_TX_MIRROR) || tex_height1 != tex_height2[i])) {
-                tm |= 1 << (2 * i + 1);
+            if ((cmt & G_TX_CLAMP) && ((cmt & G_TX_MIRROR) || tex_height1 != material.tex_height2[i])) {
+                material.tm |= 1 << (2 * i + 1);
                 cmt &= ~G_TX_CLAMP;
             }
 
@@ -2729,7 +2702,7 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
              * other TMEM content (the green). */
             static int ge_d229_b = -1;
             if (ge_d229_b < 0) ge_d229_b = getenv("GE_D229") != NULL;
-            if (ge_d229_b && use_2cyc && comb->used_textures[0] && comb->used_textures[1]) {
+            if (ge_d229_b && use_2cyc && material.comb->used_textures[0] && material.comb->used_textures[1]) {
                 static int d229x = 0;
                 static int d229_total = 0;
                 d229_total++;
@@ -2749,9 +2722,9 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
                         rdp.texture_tile[tile].masks, rdp.texture_tile[tile].maskt,
                         (int)rdp.texture_tile[tile].shifts, (int)rdp.texture_tile[tile].shiftt,
                         (unsigned)cms, (unsigned)cmt,
-                        tex_width[i], tex_height[i], tex_width2[i], tex_height2[i],
-                        (int)wrap_s[i], wrap_tw[i], wrap_uls[i],
-                        (int)wrap_t[i], wrap_th[i], wrap_ult[i],
+                        material.tex_width[i], material.tex_height[i], material.tex_width2[i], material.tex_height2[i],
+                        (int)material.wrap_s[i], material.wrap_tw[i], material.wrap_uls[i],
+                        (int)material.wrap_t[i], material.wrap_th[i], material.wrap_ult[i],
                         rdp.loaded_texture[tmem].orig_size_bytes,
                         rendering_state.textures[i] ? (const void*)rendering_state.textures[i]->first.texture_addr : nullptr,
                         rendering_state.textures[i] ? rendering_state.textures[i]->second.texture_id : 0u,
@@ -2774,7 +2747,7 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
      * one Silo capture pins whether TEXEL1 resolves to the right tmem/format. */
     static int ge_d172_a = -1;
     if (ge_d172_a < 0) ge_d172_a = getenv("GE_D172") != NULL;
-    if (ge_d172_a && use_2cyc && comb->used_textures[1] && !rdp.tex_lod) {
+    if (ge_d172_a && use_2cyc && material.comb->used_textures[1] && !rdp.tex_lod) {
         const uint32_t fi = rdp.first_tile_index;
         /* the tile fast3d will actually SAMPLE for each texunit */
         const uint32_t s0 = fi + gfx_lod_tile_offset(0);
@@ -2842,10 +2815,10 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     }
 #endif
 
-    struct ShaderProgram* prg = comb->prg[tm];
+    struct ShaderProgram* prg = material.comb->prg[material.tm];
     if (prg == NULL) {
-        comb->prg[tm] = prg =
-            gfx_lookup_or_create_shader_program(comb->shader_id0, comb->shader_id1 | (tm * SHADER_OPT_TEXEL0_CLAMP_S));
+        material.comb->prg[material.tm] = prg =
+            gfx_lookup_or_create_shader_program(material.comb->shader_id0, material.comb->shader_id1 | (material.tm * SHADER_OPT_TEXEL0_CLAMP_S));
     }
     if (prg != rendering_state.shader_program) {
         gfx_flush();
@@ -2853,25 +2826,122 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
         gfx_rapi->load_shader(prg);
         rendering_state.shader_program = prg;
     }
-    if (use_alpha != rendering_state.alpha_blend || use_modulate != rendering_state.modulate) {
+    if (material.use_alpha != rendering_state.alpha_blend || material.use_modulate != rendering_state.modulate) {
         gfx_flush();
-        gfx_rapi->set_use_alpha(use_alpha, use_modulate);
-        rendering_state.alpha_blend = use_alpha;
-        rendering_state.modulate = use_modulate;
+        gfx_rapi->set_use_alpha(material.use_alpha, material.use_modulate);
+        rendering_state.alpha_blend = material.use_alpha;
+        rendering_state.modulate = material.use_modulate;
     }
-    uint8_t num_inputs;
-    bool used_textures[2];
 
-    gfx_rapi->shader_get_info(prg, &num_inputs, used_textures);
+    gfx_rapi->shader_get_info(prg, &material.num_inputs, material.used_textures);
 
-    struct GfxClipParameters clip_parameters = gfx_rapi->get_clip_parameters();
+    material.clip_parameters = gfx_rapi->get_clip_parameters();
+}
+
+static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bool is_rect, bool projectedCull = false) {
+    /* D75D: only real model triangles (all indices < MAX_VERTICES); the
+     * fullscreen-quad helpers use indices MAX_VERTICES+0..3 and would skew maxtri. */
+    if (vtx1_idx < MAX_VERTICES && vtx2_idx < MAX_VERTICES && vtx3_idx < MAX_VERTICES) {
+        uint32_t d75d_mx = vtx1_idx > vtx2_idx ? (vtx1_idx > vtx3_idx ? vtx1_idx : vtx3_idx)
+                                               : (vtx2_idx > vtx3_idx ? vtx2_idx : vtx3_idx);
+        if (tri_dbg()) d75d_note_tri(videoGetFrameCount(), d75d_mx);
+    }
+    struct LoadedVertex* v1 = &rsp.loaded_vertices[vtx1_idx];
+    struct LoadedVertex* v2 = &rsp.loaded_vertices[vtx2_idx];
+    struct LoadedVertex* v3 = &rsp.loaded_vertices[vtx3_idx];
+    struct LoadedVertex* v_arr[3] = { v1, v2, v3 };
+
+    if ((rsp.extra_geometry_mode & G_NO_CLIPPING_EXT) == 0) {
+        /* D233: the outcode bits set in gfx_sp_vertex (x<-w / x>w / y<-w /
+         * y>w / z>w) are only valid half-space tests when w>0. A vertex
+         * that has crossed behind the camera plane (w<0) flips the sense of
+         * those comparisons, so its clip_rej bits can come out wrong. If
+         * that spurious bit happens to match the other two (genuinely
+         * correct) vertices' bits, the AND-reduction below fires and drops
+         * the whole triangle before it ever reaches the GPU -- even though
+         * OpenGL's own homogeneous clipper (which handles w<0 correctly)
+         * would have rendered the visible portion of it. This hits large
+         * polygons near the camera (room walls/ceilings near a doorway,
+         * where the camera is close enough for a vertex to sit behind it)
+         * far more than small prop models, matching D233's "room geometry
+         * intermittently vanishes near doors, furniture/terminals still
+         * draw" report. Fix: never trust the trivial-reject AND test when
+         * any vertex has a negative w -- defer to GL's clipper instead,
+         * same as the backface-cull code just below already does for the
+         * same w-sign hazard. Worst case for the (rare) mixed-sign case is
+         * a few extra triangles reaching the GPU; never fewer. */
+        bool any_behind_camera = (v1->w < 0) || (v2->w < 0) || (v3->w < 0);
+        if (!any_behind_camera && (v1->clip_rej & v2->clip_rej & v3->clip_rej)) {
+            // The whole triangle lies outside the visible area
+            if (tri_dbg()) d75d_note_rej(videoGetFrameCount(), 0);
+            return;
+        }
+    }
+
+    if ((rsp.geometry_mode & G_CULL_BOTH) != 0) {
+        float cross;
+        if (projectedCull) {
+            const CullPosition &a = cullPosition(vtx1_idx, v1);
+            const CullPosition &b = cullPosition(vtx2_idx, v2);
+            const CullPosition &c = cullPosition(vtx3_idx, v3);
+            cross = (a.x - b.x) * (c.y - b.y) - (a.y - b.y) * (c.x - b.x);
+#if defined(GE_LAN_HOST) && !defined(__XBOX__)
+            static const bool verifyCull = getenv("GE_VERIFY_TRI4_CULL") != NULL;
+            if (verifyCull) {
+                float ref = originalCullCross(v1, v2, v3);
+                if ((cross >= 0) != (ref >= 0) || (cross <= 0) != (ref <= 0)) abort();
+                static unsigned checked;
+                if ((++checked & 0x3ffff) == 0) fprintf(stderr, "TRI4 verified %u cull decisions\n", checked);
+            }
+#endif
+        } else {
+            cross = originalCullCross(v1, v2, v3);
+        }
+
+        if ((v1->w < 0) ^ (v2->w < 0) ^ (v3->w < 0)) {
+            // If one vertex lies behind the eye, negating cross will give the correct result.
+            // If all vertices lie behind the eye, the triangle will be rejected anyway.
+            cross = -cross;
+        }
+
+        // If inverted culling is requested, negate the cross
+        // if ((rsp.extra_geometry_mode & G_EX_INVERT_CULLING) == 1) {
+        //     cross = -cross;
+        // }
+
+        switch (rsp.geometry_mode & G_CULL_BOTH) {
+            case G_CULL_FRONT:
+                if (cross <= 0) {
+                    if (tri_dbg()) d75d_note_rej(videoGetFrameCount(), 1);
+                    return;
+                }
+                break;
+            case G_CULL_BACK:
+                if (cross >= 0) {
+                    if (tri_dbg()) d75d_note_rej(videoGetFrameCount(), 1);
+                    return;
+                }
+                break;
+            case G_CULL_BOTH:
+                // Why is this even an option?
+                if (tri_dbg()) d75d_note_rej(videoGetFrameCount(), 1);
+                return;
+        }
+    }
+
+    if (!triangleMaterialReady || is_rect) {
+        prepareTriangleMaterial();
+        // The texture probes count individual triangle visits.
+        static const bool traceMaterial = getenv("GE_D229") || getenv("GE_D172");
+        triangleMaterialReady = !is_rect && !traceMaterial;
+    }
 
     if (tri_dbg()) {   /* D474: one cached gate for the debug hooks */
         d75d_note_emit(videoGetFrameCount(), v_arr); // survived all rejection gates -> reaches GL
         d303_note_emit(videoGetFrameCount(), v_arr); // TEMP D303
         zf_note_emit(videoGetFrameCount(), v_arr);   // TEMP D306/D308
-        d526_note_emit(videoGetFrameCount(), v_arr, use_alpha ? 1 : 0, use_modulate ? 1 : 0); // D526 census
-        d75d_note_emit_z(videoGetFrameCount(), v_arr, (used_textures[0] || used_textures[1]) ? 1 : 0, comb->used_textures[0] ? 1 : 0);
+        d526_note_emit(videoGetFrameCount(), v_arr, material.use_alpha ? 1 : 0, material.use_modulate ? 1 : 0); // D526 census
+        d75d_note_emit_z(videoGetFrameCount(), v_arr, (material.used_textures[0] || material.used_textures[1]) ? 1 : 0, material.comb->used_textures[0] ? 1 : 0);
     }
     /* D543: RSP-style near-plane clipping on the CPU. The GPU clips the
      * triangle itself against the near plane, but it interpolates the
@@ -2967,17 +3037,17 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     for (int i = 0; i < n_emit_verts; i++) {
         struct LoadedVertex* vi = emit_v[i];
         float z = vi->z, w = vi->w;
-        if (clip_parameters.z_is_from_0_to_1) {
+        if (material.clip_parameters.z_is_from_0_to_1) {
             z = (z + w) / 2.0f;
         }
 
         buf_vbo[buf_vbo_len++] = vi->x;
-        buf_vbo[buf_vbo_len++] = clip_parameters.invert_y ? -vi->y : vi->y;
+        buf_vbo[buf_vbo_len++] = material.clip_parameters.invert_y ? -vi->y : vi->y;
         buf_vbo[buf_vbo_len++] = z;
         buf_vbo[buf_vbo_len++] = w;
 
         for (int t = 0; t < 2; t++) {
-            if (!used_textures[t]) {
+            if (!material.used_textures[t]) {
                 continue;
             }
 
@@ -3013,22 +3083,22 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
             // `t`, not the vertex `i`). The old in-place version was inert
             // (guard `cms & G_TX_WRAP` == `& 0`) and OOB (`tex_width2[i]` with
             // `i` = vertex). See SMALL-FIXES B1.
-            if (wrap_s[t]) {
-                u = fmodf(u, wrap_tw[t]);
-                if (u < 0.0f) u += wrap_tw[t];
-                u += wrap_uls[t];
+            if (material.wrap_s[t]) {
+                u = fmodf(u, material.wrap_tw[t]);
+                if (u < 0.0f) u += material.wrap_tw[t];
+                u += material.wrap_uls[t];
                 /* RC3: when the N64 wrap period (wrap_tw) exceeds the uploaded
                  * image width, the [width, period) band has no real texels --
                  * clamp it to the edge rather than let GL_REPEAT restart the
                  * image early. Never triggers for the sub-tile-window case
                  * (wrap_tw + wrap_uls stay within tex_width). */
-                if (tex_width[t] > 0 && u > (float)tex_width[t]) u = (float)tex_width[t] - 0.5f;
+                if (material.tex_width[t] > 0 && u > (float)material.tex_width[t]) u = (float)material.tex_width[t] - 0.5f;
             }
-            if (wrap_t[t]) {
-                v = fmodf(v, wrap_th[t]);
-                if (v < 0.0f) v += wrap_th[t];
-                v += wrap_ult[t];
-                if (tex_height[t] > 0 && v > (float)tex_height[t]) v = (float)tex_height[t] - 0.5f;
+            if (material.wrap_t[t]) {
+                v = fmodf(v, material.wrap_th[t]);
+                if (v < 0.0f) v += material.wrap_th[t];
+                v += material.wrap_ult[t];
+                if (material.tex_height[t] > 0 && v > (float)material.tex_height[t]) v = (float)material.tex_height[t] - 0.5f;
             }
 
             if (!is_rect) {
@@ -3044,39 +3114,39 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
                 }
             }
 
-            buf_vbo[buf_vbo_len++] = u / tex_width[t];
-            buf_vbo[buf_vbo_len++] = v / tex_height[t];
+            buf_vbo[buf_vbo_len++] = u / material.tex_width[t];
+            buf_vbo[buf_vbo_len++] = v / material.tex_height[t];
 
-            bool clampS = tm & (1 << 2 * t);
-            bool clampT = tm & (1 << (2 * t + 1));
+            bool clampS = material.tm & (1 << 2 * t);
+            bool clampT = material.tm & (1 << (2 * t + 1));
 
             if (clampS) {
-                buf_vbo[buf_vbo_len++] = (tex_width2[t] - 0.5f) / tex_width[t];
+                buf_vbo[buf_vbo_len++] = (material.tex_width2[t] - 0.5f) / material.tex_width[t];
             }
             if (clampT) {
-                buf_vbo[buf_vbo_len++] = (tex_height2[t] - 0.5f) / tex_height[t];
+                buf_vbo[buf_vbo_len++] = (material.tex_height2[t] - 0.5f) / material.tex_height[t];
             }
         }
 
-        if (use_fog) {
+        if (material.use_fog) {
             buf_vbo[buf_vbo_len++] = rdp.fog_color.r / 255.0f;
             buf_vbo[buf_vbo_len++] = rdp.fog_color.g / 255.0f;
             buf_vbo[buf_vbo_len++] = rdp.fog_color.b / 255.0f;
             buf_vbo[buf_vbo_len++] = vi->fog_n / 255.0f; // D540: see LoadedVertex.fog_n
         }
 
-        if (use_grayscale) {
+        if (material.use_grayscale) {
             buf_vbo[buf_vbo_len++] = rdp.grayscale_color.r / 255.0f;
             buf_vbo[buf_vbo_len++] = rdp.grayscale_color.g / 255.0f;
             buf_vbo[buf_vbo_len++] = rdp.grayscale_color.b / 255.0f;
             buf_vbo[buf_vbo_len++] = rdp.grayscale_color.a / 255.0f; // lerp interpolation factor (not alpha)
         }
 
-        for (int j = 0; j < num_inputs; j++) {
+        for (int j = 0; j < material.num_inputs; j++) {
             struct RGBA* color = 0;
             struct RGBA tmp = { 0 };
-            for (int k = 0; k < 1 + (use_alpha ? 1 : 0); k++) {
-                switch (comb->shader_input_mapping[k][j]) {
+            for (int k = 0; k < 1 + (material.use_alpha ? 1 : 0); k++) {
+                switch (material.comb->shader_input_mapping[k][j]) {
                         // Note: CCMUX constants and ACMUX constants used here have same value, which is why this works
                         // (except LOD fraction).
                     case G_CCMUX_PRIMITIVE:
@@ -3145,14 +3215,14 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     }
 }
 
-static inline void gfx_sp_tri4(Gfx *cmd) {
+static inline void gfx_sp_tri4(Gfx *cmd, bool projectedCull) {
     // the game issues gSPTri2 for quads, which uses G_TRI4 with 2 empty triangles
     uint8_t x = C1(0, 4);
     uint8_t y = C1(4, 4);
     uint8_t z = C0(0, 4);
 
     if(x || y || z) {
-        gfx_sp_tri1(x, y, z, false);
+        gfx_sp_tri1(x, y, z, false, projectedCull);
     }
 
     x = C1(8, 4);
@@ -3160,7 +3230,7 @@ static inline void gfx_sp_tri4(Gfx *cmd) {
     z = C0(4, 4);
 
     if (x || y || z) {
-        gfx_sp_tri1(x, y, z, false);
+        gfx_sp_tri1(x, y, z, false, projectedCull);
     }
 
     x = C1(16, 4);
@@ -3168,7 +3238,7 @@ static inline void gfx_sp_tri4(Gfx *cmd) {
     z = C0(8, 4);
 
     if (x || y || z) {
-        gfx_sp_tri1(x, y, z, false);
+        gfx_sp_tri1(x, y, z, false, projectedCull);
     }
 
     x = C1(24, 4);
@@ -3176,7 +3246,7 @@ static inline void gfx_sp_tri4(Gfx *cmd) {
     z = C0(12, 4);
 
     if (x || y || z) {
-        gfx_sp_tri1(x, y, z, false);
+        gfx_sp_tri1(x, y, z, false, projectedCull);
     }
 }
 
@@ -4029,6 +4099,7 @@ static void gfx_sp_vertex_float(size_t n_vertices, size_t dest_index, const Port
     if (!fast3d_ptr_ok(vertices) || dest_index + n_vertices > MAX_VERTICES) {
         return;
     }
+    invalidateCullPositions(dest_index, n_vertices);
     for (size_t i = 0; i < n_vertices; i++, dest_index++) {
         const PortFloatVtx* v = &vertices[i];
         struct LoadedVertex* d = &rsp.loaded_vertices[dest_index];
@@ -4124,6 +4195,10 @@ static void gfx_run_dl(Gfx* cmd) {
 
     for (;;) {
         uint32_t opcode = cmd->words.w0 >> 24;
+        // A vertex load changes the transformed vertices and light coefficients.
+        // Neither is an input to the material prepared for the next triangle.
+        if (opcode != (uint8_t)G_TRI1 && opcode != (uint8_t)G_TRI4 &&
+            !(opcode == G_VTX && reuseVertexMaterial)) triangleMaterialReady = false;
         // gfx_print_cmd(cmd);
         switch (opcode) {
                 // RSP commands:
@@ -4191,7 +4266,17 @@ static void gfx_run_dl(Gfx* cmd) {
                 gfx_sp_tri1(C1(16, 8) / 10, C1(8, 8) / 10, C1(0, 8) / 10, false);
                 break;
             case (uint8_t)G_TRI4:
-                gfx_sp_tri4(cmd);
+                if (traceTri4) {
+                    Gfx *first = cmd;
+                    uint64_t start = ftTri4Begin();
+                    do {
+                        gfx_sp_tri4(cmd, projectTri4);
+                        ++cmd;
+                    } while ((cmd->words.w0 >> 24) == (uint8_t)G_TRI4);
+                    ftTri4End(start, (unsigned)(cmd - first));
+                    continue; // cmd already points at the next opcode
+                }
+                gfx_sp_tri4(cmd, false);
                 break;
             case (uint8_t)G_SETOTHERMODE_L:
                 gfx_sp_set_other_mode(C0(8, 8), C0(0, 8), cmd->words.w1);
@@ -4591,6 +4676,9 @@ uint32_t num_dls = 0;
  * when the overlay is closed -- in which case nothing is appended and the
  * frame is byte-identical to before (golden dumps unaffected). */
 extern "C" Gfx* optionsOverlayEmit(void);
+#ifdef GE_LAN_HOST
+extern "C" void xboxFinalsOverlay(int width, int height);
+#endif
 
 static uint64_t gfx_perf_now_ns(void) {
     return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -4641,6 +4729,13 @@ extern "C" void gfx_run(Gfx* commands) {
     rendering_state.viewport = {};
     rendering_state.scissor = {};
     const uint64_t perf_tpre = perf_t0 ? gfx_perf_now_ns() : 0;
+    triangleMaterialReady = false;
+    const int listFlags = ftListBegin();
+    traceVisibleList = (listFlags & FT_LIST_TIMED) != 0;
+    traceTri4 = (listFlags & FT_LIST_TRACE_TRI4) != 0;
+    projectTri4 = (listFlags & FT_LIST_PROJECT_TRI4) != 0;
+    projectedSlots = 0;
+    reuseVertexMaterial = (listFlags & FT_LIST_REUSE_MATERIAL) != 0;
     gfx_run_dl(commands);
     {
         Gfx* overlay = optionsOverlayEmit();
@@ -4652,6 +4747,13 @@ extern "C" void gfx_run(Gfx* commands) {
         }
     }
     gfx_flush();
+    ftListEnd();
+    traceVisibleList = false;
+#ifdef GE_LAN_HOST
+    /* The shared fork wheel rasterizes after fast3d has submitted the frame,
+     * while the game framebuffer is still bound. */
+    xboxFinalsOverlay(gfx_current_dimensions.width, gfx_current_dimensions.height);
+#endif
     const uint64_t perf_t1 = perf_t0 ? gfx_perf_now_ns() : 0;
     gfxFramebuffer = 0;
 

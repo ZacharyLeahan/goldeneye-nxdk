@@ -728,6 +728,24 @@ covers D24–D69; the log continues in §H (D32 procedure, D70–D121).
 | D575 | Xbox wheel flicks, jump-pad rendering and model-slot layout in local multiplayer. | FIXED 2026-11-18 (downstream Xbox) |
 | D576 | Two-player Xbox mantling and sprint slides in Complex. | FIXED 2026-11-18 (downstream Xbox) |
 | D577 | Two-machine Complex LAN movement and independent cameras. | IN PROGRESS (Xbox hardware verified against a test peer, native Windows host built) |
+| D578 | Windows LAN host uses the fork controls and equipment wheel. | PARTIAL (both physical machines exchanged movement and turns, PC Ethernet pending) |
+| D579 | LAN remote players slide with idle legs in Complex. | FIXED (confirmed in a Windows-hosted match on a physical Xbox) |
+| D580 | The Xbox renderer turns the remote player into a black silhouette in Complex. | FIXED (same-scene fog comparison on a physical Xbox) |
+| D581 | Complex LAN firefight, kill credit and respawn. | VERIFIED (Windows host and physical Xbox fired in both directions) |
+| D582 | Authoritative stage pickups, ammo and arena selection. | PARTIAL (Windows arena and pickup tests passed, physical Temple load stalls) |
+| D583 | Host score limits, two-player rematch and process restart. | VERIFIED on Windows (physical Xbox pending) |
+| D584 | Special portal scan uses a linker-dependent end address. | FIXED in downstream Windows and Xbox builds (physical Temple retest pending) |
+| D585 | LAN death drops retain their world position and pickup ownership on both seats. | VERIFIED on Windows (physical Xbox pending) |
+| D586 | Windows split-screen routes the fork controls and equipment wheel to each local seat. | VERIFIED with scripted local seats on all retail arenas |
+| D587 | A rearmed controller-init timer could be cleared by its previous firing. | FIXED in the platform timer shim (24 cold Windows boots passed) |
+| D588 | Egypt LAN rendering cost depends on visible geometry. | VERIFIED (physical Egypt comparison and normal Xbox replay) |
+| D589 | Egypt LAN repeats occur before the next surface is ready. | MEASURED (two physical traces at the same native camera) |
+| D590 | Skip draw-only work in the unused LAN seat. | MEASURED (physical Egypt A/B) |
+| D591 | Profile visible Egypt draws and wake the graphics scheduler at submission. | MEASURED (Xbox LAN) |
+| D592 | Restore the full-screen LAN sky's inherited fill state. | FIXED |
+| D593 | Retain triangle material across vertex loads in the Egypt LAN view. | MEASURED |
+| D594 | Trace TRI4 at the heavy Egypt LAN camera and measure projected-coordinate reuse. | MEASURED |
+| D595 | Accept a mixed audio/graphics command pair on the early Egypt LAN wake. | FIXED |
 | D407 | **Tanks cannot be boarded/exited on PC — the v0.4.0 use/reload split (D378/D393) removed the B-button tap the engine's tank handlers in `bondview2.c` consume (user report 2026-09-28, Runway/Streets)** — full `## D407` entry at file tail | **CLOSED (2026-09-28 bookkeeping: tank board/exit accepted by the user; shipped in v0.4.0).** Earlier: PARTIAL (fix landed in v0.4.0, port-only): present `GE_CONT_B` on the use (E / pad A) rising edge only while `g_PlayerIsInTank == 1` or `g_BondCanEnterTank != 0`; E keeps its D378 no-reload-fallback semantics elsewhere, N64 layout unaffected. D407(b) same cycle: front PC Options page-edge highlight clamp + mouse-wheel / W-S paging (wheel queue consumed on the menu, D223); its wheel mapping shipped inverted and was fixed to match W/S (wheel up = step up). D407(c): board-animation lockout, menu-accept B gate in tank states, in-tank aim routed through the legacy velocity stick + `Input.TankAimScale` knob. RESOLVED 2026-09-28: all port-only (src/game zero-diff), 10 TANKDBG probes stripped, release binary verified clean, user live tank drive signed off (board + exit OK, aim feel good). |
 | D408 | **`Game.SkipIntro` skips the post-mission failure dossier: with it on, entering a level then aborting (watch Z+A) or dying (KIA) returns straight to the menus — no REPORT / "Mission status: KILLED IN ACTION / ABORTED" screen** (user report 2026-09-28; save/AllUnlocked ruled out) — full `## D408` entry at file tail | FIXED 2026-09-30 (SkipIntro hook gated to first boot; live dossier check owed). |
 | D415 | **Shooting a light fixture does not "kill" its flickering light (Bunker, Caverns): the fixture takes the hit but the flicker keeps going (community report, issue #87 comment by the reporter, 2026-09-28, 00 Agent playthrough of v0.4.0).** — full `## D415` entry at file tail | FIXED (2026-09-29 bookkeeping: root-caused and fixed as D430 + D431, user-verified vs GEPD/1964 on Caverns 2026-09-29; #119). Earlier: ROOT-CAUSED as D430 (see there); fix in tree, live check owed. |
@@ -18519,3 +18537,365 @@ remote character. The peer received translation and changes in heading from
 physical Xbox controller reports. A native x86-64 Windows host was
 cross-compiled from the same source tree. The acceptance test on a Windows
 machine, followed by a fresh match with the WAN disconnected, is pending.
+
+## D578 — Fork controls on the Windows Complex LAN host
+
+The Windows host used the desktop game's controller path while the Xbox
+used the fork's equipment and traversal controls. The Windows LAN build
+now compiles the same wheel selection, artwork, look and traversal sources
+from `mods/the-finals/`. It reads SDL controller slot 1 and draws the wheel
+over the local full-screen viewport. The Xbox source generator applies the
+shared LAN hooks once and enables the fork controls in local split-screen too.
+
+The Windows x86-64 executable built, the wheel regression passed, and two
+loopback processes each received the other's translation and change of
+heading. The listener reports rejected build IDs to distinguish a stale
+client from a network timeout. The LAN protocol exchanges player poses.
+A native Windows MSYS2 build produced an XBE and a private XISO containing
+the executable, the converted assets and the checksum-verified retail ROM.
+The Windows host and the XBE reported the same configured LAN ID, `1745ab9c`.
+After installing the XBE by FTP and launching it from XBMC, the physical
+Xbox joined the Windows host in Complex. The console was wired and Windows
+used Wi-Fi. A capture restricted to the two game endpoints recorded HELLO,
+WELCOME and hundreds of pose packets in each direction. The Xbox moved
+from (1009.9, 495.0) to (1095.8, 270.7) and turned from 180 to 335 degrees.
+The Xbox display showed the Windows player at spawn.
+The Windows host moved from (1009.9, 330.0) to (917.8, 533.7) and turned
+from 0 to 109 degrees while the Xbox stayed still. Windows keyboard events
+drove this check. The focused game window accepts WASD for movement, Up and
+Down for forward and backward, and Left and Right for turning. The adapter
+keeps brief direction presses visible for 100 ms so a key released between
+simulation ticks still moves the player. Tab uses the controller wheel path.
+The running Xbox also rejoined automatically after the host restarted.
+
+The PC Ethernet adapter was disconnected. A two-ended wired test, a fresh
+match with WAN disconnected, and a physical Windows controller check remain open.
+
+## D579 — Remote player leg animation in Complex
+
+The LAN transport sent position and facing while the remote player's
+`playerTick` read movement from an idle local controller slot. The downstream
+build adapter now feeds the sender's signed forward speed, strafe speed and
+walk/run gait to the native multiplayer animation selector. Collision and
+translation continue to use the network position. Both transport test peers
+received the expected signed axes and gait. On the physical Xbox the tester
+confirmed that the Windows player's legs moved while walking in Complex.
+
+## D580 — Distance-dependent black character shading on Xbox
+
+GoldenEye uses the floor tile's shade to set fog alpha on character draws.
+The shared RSP has two fog encodings. OpenGL selects per-vertex fog by
+default. The Xbox backend left the RSP in its per-pixel mode, which
+multiplies fog by clip-space W. The NV2A backend packed this number into a
+normalized eight-bit specular alpha. At distance it saturated and blended
+the entire character into the tile's fog color.
+
+The Xbox backend now requests normalized per-vertex fog during renderer
+initialization. A temporary test XBE switched between encodings every 120
+frames while the Windows player stood still in Complex. The HDMI capture
+showed the face and hand repeatedly switching between black and skin color
+at the same location. The regular build always uses the corrected encoding.
+
+## D581 — Complex LAN firefight
+
+Both seats fire the native PP7. The host resolves damage once, records the
+kill against the victim and publishes both seats' health, armour, deaths and
+kill counts. The host accepts a respawn request during the native death
+camera's respawn window. The new life number distinguishes the new spawn
+from delayed movement packets belonging to the previous life.
+
+On real hardware, the Windows player killed the Xbox player in Complex.
+The console displayed the respawn prompt and the host recorded the Xbox
+player's second life at full health. In a fresh match the Xbox player
+killed the Windows player. Windows showed the prompt, credited one kill
+to the Xbox and respawned the Windows player at full health.
+
+The Windows regression exercises both directions between two native game
+processes through a relay that drops every ninth packet and reorders
+duplicates. A third case interrupts both directions for ten seconds after
+the death. Both processes timed out, rejoined and agreed on the single
+kill and the revived player. This case keeps both processes running.
+
+## D582 — Authoritative stage pickups and arena selection
+
+The host runs the native pickup code for both seats. A rotating page of
+setup command indices identifies stage objects across the 32- and 64-bit
+builds. The client reconciles item availability and native inventories
+from repeated snapshots. The Windows regression places both players in
+pickup range, verifies a single award and waits for the item to reappear.
+Both seats agreed on ownership and ammo after each contest under packet loss.
+The Xbox won a physical Complex ammo contest and its reserve and magazine
+counts matched Windows after firing 18 rounds.
+
+All eleven retail arenas loaded and exchanged gunfire in Windows LAN play.
+The Xbox resource pack converts all eleven setups and nine distinct geometry
+sets. Temple joined the physical Windows host, then its Xbox display went
+black before the first confirmed gameplay frame and the host timed out.
+The normal in-game reset chord did not recover that run. The opt-in
+`ge-recover.on` marker enables a stage-load trace in `ge-load.log` and a
+dashboard return after 30 seconds without progress if the OS can schedule it.
+After the D584 fix, the physical Xbox rendered Temple and registered six
+shots at the Windows host. The same Xbox then rejoined ten replacement
+hosts, one per remaining arena, and exchanged gunfire with each.
+
+## D583 — LAN score limits, rematches and process restart
+
+The host publishes its point limit and round identifier. Both players see the
+host's score matrix before opening results. The host reloads the arena once
+both players confirm a rematch. Under packet loss, delayed duplicates and
+each possible winner, two Windows games reached the same one-point result
+and began one fresh round at full health with zero kills.
+
+A freshly restarted guest returned to the same host with its last position,
+kill, 33 pistol rounds and the opponent's second life. Replacing that host
+with a Temple host on the same port moved the surviving guest to Temple
+with full health, 49 pistol rounds, zero kills and a three-point limit.
+
+On physical Xbox, a Windows one-point win in Complex produced a second-place
+results screen with the correct score. Pressing Start on both seats began a
+new round. Windows reported both seats at full health, zero kills and 49 pistol
+rounds, then registered fresh Xbox gunfire.
+
+## D584 — Bound the special portal scan by its table
+
+The N64 placed the next global immediately after a 20-byte table of portal
+ranges for two levels. On Windows the next global linked before the table.
+In an Xbox build its address was 187,060 bytes above the table. A read-only
+walk of the linked image found an unrelated byte sequence that the loader
+interpreted as a Temple range from 0 through 255. The loop's eight-bit
+counter wraps at 255 and cannot finish that range. Temple has 37 portals.
+Complex also matched unrelated ranges beyond its 60 portals in that build.
+
+Both downstream build adapters now use the table's one-past-end pointer.
+Two Windows games loaded Temple through a host restart with the correction.
+Both seats then exchanged gunfire on all eleven retail arenas and exited
+normally. On the physical Xbox the corrected build reached the Temple HUD,
+turned, and fired six shots that Windows registered. The ten other arenas
+also reached gameplay on the same Xbox.
+
+## D585 — Replicate native death drops
+
+Stage setup indices cover authored objects. Weapons created by
+`drop_inventory` use a separate native pool of 30 slots. After a host-side
+drop, the host publishes its item, generation, transform and collision room.
+A repeated occupancy mask retires collected or freed weapons. One occupied
+slot per snapshot supplies the transform. Stationary items skip tile lookup
+and model updates on the guest. An arriving guest can reconstruct the
+current floor inventory without replaying the death.
+
+In two lossy Windows matches the surviving player collected the opponent's
+PP7, first as host and then as guest. Each game recorded one removal and
+the same ten-round increase. A freshly restarted guest reconstructed
+both the pistol and grenade still on the floor in a separate match.
+
+In a Complex match with a physical Xbox guest, Windows killed the guest and
+collected its grenade and PP7. The host logged one award and removal per item
+and a ten-round increase for the PP7. In the reverse test the Xbox player
+killed the Windows player and moved forward to collect both drops. Windows
+logged one award and removal per item for the guest. Pistol ammunition rose
+from 36 to 46, and the physical Xbox HUD showed 1 loaded and 45 in reserve.
+
+## D586 — Fork controls in Windows split-screen
+
+Windows enabled the fork input and held-item callbacks only during LAN
+play, and the controller reader always read seat zero. Local multiplayer
+now polls the SDL controller assigned to each seat. The keyboard and mouse
+feed player one. During a LAN match the remote seat takes its input from
+the peer. Each OpenGL wheel draw uses and restores its own viewport.
+
+The local regression drove two independent scripted controllers on all
+eleven arenas and four in Complex. Each player opened the wheel, selected
+a grenade and consumed exactly one from their loaded and reserve total.
+The native shot statistic stayed at zero for grenade throws. The regression
+also checks successful projectile creation by seat. The Xbox profiler
+records that counter separately, sums native shots across all seats and
+starts a new sample on same-arena reload. Its extended rows include seat
+count, grenade launches, 99th-percentile frame interval and elapsed VBlanks.
+Windows framebuffer captures showed the top and bottom wheels opening
+independently and together in Complex. The physical Xbox also recognized
+two controllers at multiplayer setup. In Complex the upper player used
+the KVM controller and the lower player used the port 2 controller. Both
+turned, chose grenades with their wheels and threw them. The console
+recorded four grenade launches across three seven-second samples at
+59.8–60.0 FPS, with 19–20 ms p95 and 20–21 ms p99 frame intervals.
+Physical Windows controller coverage remains open.
+
+## D587 — Intermittent freeze before the first Windows frame
+
+During the process-restart regression, a Windows host accepted the LAN
+handshake and stopped before rendering frame one. Its main thread was in
+`bossInitMainthreadData`, waiting for the second of four consecutive
+100 ms one-shot timers on the same stack object. The log recorded the first
+delivery and the second arm. The kernel heartbeat continued without ever
+reporting a second delivery.
+
+The platform tick thread sent the first queue message before marking
+the one-shot inactive. The awakened game thread could rearm the same slot
+in that interval. Both threads also accessed its deadline without a lock.
+The shim now serializes timer setup, stop, service and deadline lookup,
+and retires each one-shot before delivering the message. Twelve fresh
+Windows host/guest pairs completed controller initialization and loaded
+Complex. Each of the 24 processes recorded all four timer deliveries.
+
+## D588 — Egypt LAN renderer cost
+
+In two steady 300-frame Windows firefight windows, the guest drew
+1,123–1,134 triangles per frame at 60 FPS. OpenGL measured 0.58 ms of GPU
+time per frame and Fast3D measured 0.33–0.34 ms of display-list work.
+
+Four seven-second samples on a stationary original Xbox ranged from
+35.1 to 36.4 FPS. The renderer took 13.56–13.95 ms per frame, including
+3.04–3.11 ms in the NV2A draw routine. Back-buffer acquisition and final
+GPU drain each averaged about one microsecond. Texture upload bytes were
+zero. A different Egypt camera sustained roughly 60 FPS during gunfire.
+
+The shared renderer reuses material setup across consecutive triangle
+commands. Any other opcode invalidates it. In a Windows firefight, fresh
+material preparation matched the cached result on at least 1.55 million
+comparisons. A longer run recorded 49 shots from each seat at the host.
+On the physical Xbox, alternating the two routines every seven seconds with
+a fixed camera gave four firing samples per routine in the slow view. FPS
+pooled over elapsed time rose from 34.02 to 38.75. CPU renderer time fell
+from 13.96 to 12.91 ms per frame, at 1,446 and 1,481 input triangles per
+frame respectively. Each firing window had a 36 ms p95 frame interval.
+The lighter view held 59.9 FPS with either routine. The first diagnostic
+session timed out after 40 guest shots and needed a dashboard reset. In
+the normal-build replay the host recorded 49 shots from each player in Egypt.
+
+## D589 — Match Egypt game frames to physical scanout
+
+Guest spawn 0 matches the earlier Egypt performance camera. Current Windows
+host and guest traces joined 1,438 interior game frames each. The Windows
+guest spent 0.060 ms per frame processing the unused seat.
+
+In two 24-second physical Xbox traces, the display showed 49.63 and 55.36
+distinct frames per second. Both had a 33.33–33.34 ms p95 display interval.
+Of 246 observed repeats in the first trace, the following frame awaited
+scheduler handoff in 227 cases and was under renderer processing in 19.
+In the second trace all 77 observed repeats occurred during renderer
+processing. The next surface became ready a median 12.24 and 0.50 ms after
+the repeated refresh, respectively. There were 1 and 34 interrupt observation
+gaps exceeding 1.5 refresh periods. Every interior render ID eventually appeared
+on scanout. The first run drew 1,240 and the second 1,457 triangles per frame.
+Neither reproduced the earlier 38.75 FPS mean.
+
+The unused LAN seat took 0.693 and 0.631 ms per frame, including visibility,
+prop ticks, auto-aim and interaction. The game discarded 7,044 and 6,433
+display-list bytes per frame. Removing draw-only work requires a separate
+A/B with both seats' gameplay intact. The original Xbox supplied all display
+timings. Windows and then xemu with OXOS validated the boot trace before the
+second console build. See [the physical captures and their limits](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7011512373).
+
+## D590 — Skip drawing for the unused Egypt LAN seat
+
+Both simulated players still run their normal input, firing, respawn, prop and
+room updates. The downstream adapter skips draw-only room, model and effect
+commands for the hidden LAN seat. It retains model traversal, room residency,
+and the existing discard of commands from routines that mix drawing and
+gameplay. Local split-screen draws each seat.
+
+Windows passed nine multiplayer firefight cases, including role-reversed kills,
+respawns, pickups, death drops and rematches. Both Egypt split-screen players
+selected and threw grenades. The Windows LAN host counted 42 shots per seat.
+The same Xbox executable joined a Windows Egypt host in 64 MiB xemu with
+OXOS. All 574 interior frames matched from game ID to displayed surface.
+
+On the physical Xbox, switching modes every three seconds during one 24-second
+PP7 firefight at native guest start 0 reduced unused-seat time from 0.6802
+to 0.5805 ms and discarded list size from 6,333 to 3,459 bytes per frame.
+Displayed FPS was 35.56 with normal drawing and 34.71 with suppression. Both
+had a 33.33 ms p95 display interval. The suppression blocks averaged 1,521
+visible triangles per frame versus 1,408 in the control. All 840 interior
+frames appeared on scanout. On all 595 repeated refreshes for which the next frame was captured, the
+renderer was processing that frame. Its surface became ready a median 5.00 ms
+later. One additional repeat at the end of the trace could not be classified. See [the per-mode results and capture conditions](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7012007310).
+
+## D591 — Measure the visible Egypt display list and wake the scheduler on graphics submission
+
+The physical guest at native start 0 spent 9.408 ms per frame in visible-list
+work outside the backend draw callback, and 3.143 ms inside it. An interrupt
+sample assigned 393 of 520 classifiable repeats to the former and 101 to the
+latter. Preserving packed vertices across triangles reduced Windows CPU time
+but increased the corresponding Xbox time from 9.677 to 10.148 ms. The
+playable build omits that cache. See [the visible-list trace](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7012757162)
+and [the cache comparison](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7012887444).
+
+On graphics submission, the Egypt LAN port can send a dedicated message to
+the scheduler. The scheduler admits a lone graphics command to its native
+task list and uses its existing readiness, audio, swap and SP/DP checks.
+Normal retraces continue driving VI and its clients. Eight counterbalanced
+blocks in one firefight measured 52.71 versus 59.92 displayed FPS, 86 versus
+one repeated refresh and 33.33 versus 16.67 ms p95. List submission to handoff
+fell from 3.462 to 1.693 ms. The console saw every interior surface. See
+[the scheduling A/B](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7012759555).
+The four enabled blocks ranged from 59.66 to 60.00 displayed FPS. At the
+86 control repeats the next frame was processing the list outside the draw
+callback 74 times and inside it 12 times. The only enabled repeat landed
+outside the callback. The final reserved-slot wake and fixed-camera replay
+joined all 561 checked frame IDs in xemu. A two-seat hardware repeat at the
+same camera measured 51.21 to 59.75 displayed FPS and 33.33 to 16.67 ms p95.
+Another boot with only the guest firing measured 37.86 to 47.91 FPS and
+33.33 ms p95 in both modes. See [the repeat measurements](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7014737918).
+
+## D592 — Restore the inherited multiplayer sky fill in LAN
+
+The LAN adapter skipped `viSetupScreensForNumPlayers` to remove the split
+divider. This also removed its cycle, scissor and black fill setup. The
+multiplayer path in `skyRender` emits a fill rectangle using the inherited
+color. At the Egypt guest camera, the discarded setup exposed bright yellow
+along the frame edges and through an opening near the columns. The adapter
+now emits the same setup commands for the full LAN viewport. Five Windows
+guest frames at 978×734 contained 12,275–12,483 pure yellow pixels before
+the change and zero afterward. The native radar still indicates the other
+player's position. A fixed-camera xemu replay also removed the bright patch.
+At the matched camera, the original 720×480 Xbox HDMI samples contained
+4,063–4,114 bright-yellow pixels (R and G ≥ 200, B < 55). All eleven fresh
+frames from each corrected firefight sample contained zero. See [the camera and color checks](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7014737918).
+
+## D593 — Retain triangle material across vertex loads in Egypt LAN
+
+A native G_VTX command updates transformed vertices and cached lighting
+coefficients. Triangle material setup reads neither. The renderer can keep
+that setup across a vertex load and still invalidates it on a state change
+or frame boundary. A Windows validation build compared the cached material
+and backend state with full preparation on more than a million eligible
+transitions during eleven two-seat LAN firefights. Every comparison matched.
+
+Two physical Xbox A/Bs at the same Egypt guest camera measured list work
+outside the backend draw callback. It fell from 8.479 to 8.304 ms per frame
+with both players firing, and from 8.405 to 8.263 ms with the host idle.
+The first run went from 59.58 to 59.92 displayed FPS and the second from
+59.83 to 60.00. With both optimizations enabled for the full 24-second
+two-seat firefight, the playable build measured 58.95 displayed FPS across
+1,411 joined frames and 50 shots. The p95 interval was 16.668 ms and p99
+was 33.332 ms. There were 23 gaps in interrupt sampling and every interior
+render ID appeared at scanout. See [the hardware trials](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7014737918).
+
+## D594 — TRI4 culling and the remaining long Egypt LAN frames
+
+At the heavy Egypt guest camera, TRI4 consumed 5.400 ms/frame outside backend
+draws. Reusing exact projected coordinates lowered this to 5.298 ms/frame.
+Both modes had 133 observed repeated refreshes and a 33.33 ms p95 interval.
+The candidate remains an opt-in experiment. In the control blocks with
+continuous interrupt sampling, long frames started list processing with
+10.47 ms before the target refresh, compared with 19.06 ms for single-refresh
+frames. Submission to scheduler handoff averaged 8.37 versus 3.35 ms.
+See [the matched hardware trace and validation](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7015363128).
+
+## D595 — Egypt LAN scheduler handoff on mixed command queues
+
+The early graphics wake accepted a lone graphics task. When it saw one audio
+task and one graphics task, it left both in the command queue until retrace.
+On hardware those mixed graphics commands waited another 4.585 ms on average
+after the scheduler received the wake. Accepting the pair in queue order and
+using the native scheduler to select audio or graphics cut that wait to
+0.006 ms. Audio continued to start in both conditions.
+
+At the stationary heavy Egypt guest camera, the physical eight-block A/B
+measured 50.00 versus 59.13 displayed FPS and 113 versus 8 repeated refreshes.
+Mean submission-to-handoff time fell from 4.049 to 0.663 ms and p95 from
+33.33 to 16.67 ms. The control had one 400 ms interval in the included frames.
+Every candidate block remained faster than every control block. The remaining
+eight observed candidate repeats occurred in display-list processing or draw
+submission. Egypt LAN uses this wake in normal play. See [the scheduler trace,
+validation and trial limits](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7015760434).

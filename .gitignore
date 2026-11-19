@@ -216,3 +216,4 @@ docs/media/*.mp4
 # Local original Xbox build and user-supplied ROM archives
 /build-xbox/
 /GoldenEye*.zip
+/ge-frame.bin

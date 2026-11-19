@@ -1106,6 +1106,11 @@ array + ARRAY_COUNT(array)`; mingw/GCC on the PC target **reorders**
 globals, so `end` can land before the array (loop runs 0–1 times) or far
 past it (walk off the end).
 
+- D584 affected the 20-byte special portal table. The downstream Xbox
+  linker placed the unrelated end marker in another section. Treating those
+  intervening bytes as portal ranges could produce an endless eight-bit
+  counter loop on Temple. Use the actual array extent in the port build.
+
 - Instance: **D164**; `constructor_menu00_legalscreen` (`front.c`) bounds
   the 12-line legal-screen text loop on `&legalscreen_MRD`, which mingw
   links 0x60 bytes *before* `legalpage_text_array` → only line 1 renders
@@ -1865,6 +1870,12 @@ Also the read side: D496 (`generate_language_specific_text_for_weapon` strcat'd 
   PATH, `/tmp`, `mktemp` and `cygpath` can belong to different runtimes
   (different Windows dirs). Never trust `command -v cmake` for the MSYS2
   toolchain either: a pip-installed cmake can shadow it (2026-09-30).
+
+- On the downstream nxdk build, native LLVM reads Clang VFS overlay JSON
+  itself. MSYS2 only converts process arguments, so emit native paths inside
+  the JSON and quote relative object paths inside the llvm-link response file.
+  This keeps the Xbox model-slot overlay active and the object list within
+  Windows command-line limits (D578).
 
 ### Poll-thread input must never re-point `g_CurrentPlayer` (D419)
 

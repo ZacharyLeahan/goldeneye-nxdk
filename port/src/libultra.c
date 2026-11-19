@@ -40,6 +40,9 @@
 #include <PR/rdb.h>
 #include <PR/sptask.h>
 #include <PR/gbi.h>
+#if defined(GE_LAN_HOST) || defined(__XBOX__)
+#include "../../src/sched.h"
+#endif
 #pragma pop_macro("errno")
 
 #include "platform.h"
@@ -58,6 +61,7 @@
 #endif
 
 /* fast3d (C++): the software RSP entry point. */
+#include "port/lan/frame_trace.h"
 extern void gfx_run(Gfx *commands);
 extern void videoSyncSplitScreen(void); /* D416 */
 
@@ -586,6 +590,31 @@ void osEnqueueMesg(OSMesgQueue *mq, OSMesg msg)
     pthread_mutex_unlock(&pq->lock);
 }
 
+#if defined(GE_LAN_HOST) || defined(__XBOX__)
+static void portWakeGraphicsScheduler(int mode, unsigned gameId)
+{
+    OSMesgQueue *mq = &os_scheduler.interruptQ;
+    PortQueue *pq = portQueueGet(mq);
+    pthread_mutex_lock(&pq->lock);
+    // Append behind real interrupts. Keep two free slots for completions
+    // and coalesce redundant notifications while the scheduler is busy.
+    int pending = mq->validCount;
+    int room = pending + 2 < mq->msgCount;
+    for (int i = 0; room && i < pending; ++i) {
+        OSMesg existing = mq->msg[(mq->first + i) % mq->msgCount];
+        if (existing == (OSMesg)PORT_GFX_WAKE_MSG || existing == (OSMesg)PORT_GFX_PAIR_MSG)
+            room = 0;
+    }
+    if (ftPairTrace()) ftRecord(FT_WAKE_POST, gameId, ((unsigned)pending << 1) | room);
+    if (room) {
+        mq->msg[(mq->first + pending) % mq->msgCount] = mode == 2 ? (OSMesg)PORT_GFX_PAIR_MSG : (OSMesg)PORT_GFX_WAKE_MSG;
+        ++mq->validCount;
+        pthread_cond_signal(&pq->cond);
+    }
+    pthread_mutex_unlock(&pq->lock);
+}
+#endif
+
 s32 osSendMesg(OSMesgQueue *mq, OSMesg msg, s32 flag)
 {
     PortQueue *pq = portQueueGet(mq);
@@ -599,10 +628,67 @@ s32 osSendMesg(OSMesgQueue *mq, OSMesg msg, s32 flag)
     }
     mq->msg[(mq->first + mq->validCount) % mq->msgCount] = msg;
     ++mq->validCount;
+#if defined(GE_LAN_HOST) || defined(__XBOX__)
+    int wake = 0;
+    unsigned gameId = 0;
+    if (mq == &os_scheduler.cmdQ && msg && ((OSScTask *)msg)->list.t.type == M_GFXTASK) {
+        gameId = ftGameId;
+        if (ftPairTrace()) ftRecord(FT_CMD_QUEUE, gameId, mq->validCount);
+        wake = ftEarlyWake();
+    }
+#endif
     pthread_cond_signal(&pq->cond);
     pthread_mutex_unlock(&pq->lock);
+#if defined(GE_LAN_HOST) || defined(__XBOX__)
+    if (wake) portWakeGraphicsScheduler(wake, gameId);
+#endif
     return 0;
 }
+
+#if defined(GE_LAN_HOST) || defined(__XBOX__)
+extern s32 __scSchedule(OSSched *, OSScTask **, OSScTask **, s32);
+
+// The scheduler alone removes commands. An eligible audio/graphics pair
+// enters the native task lists in FIFO order, with audio priority decided by
+// __scSchedule. Other command mixes are left for ordinary retrace handling.
+void portEarlyGraphics(OSSched *sc, int allowPair)
+{
+    OSMesgQueue *mq = &sc->cmdQ;
+    PortQueue *pq = portQueueGet(mq);
+    pthread_mutex_lock(&pq->lock);
+    int count = mq->validCount;
+    OSScTask *task = count ? (OSScTask *)mq->msg[mq->first] : NULL;
+    OSScTask *second = count == 2 ? (OSScTask *)mq->msg[(mq->first + 1) % mq->msgCount] : NULL;
+    int mixed = task && second &&
+                ((task->list.t.type == M_GFXTASK && second->list.t.type == M_AUDTASK) ||
+                 (task->list.t.type == M_AUDTASK && second->list.t.type == M_GFXTASK));
+    if (ftPairTrace()) ftRecord(FT_WAKE_DEPTH, 0, (count << 1) | mixed);
+    if (!((count == 1 && task && task->list.t.type == M_GFXTASK) || (allowPair && mixed))) {
+        pthread_mutex_unlock(&pq->lock);
+        ftRecord(FT_WAKE_SERVICE, 0, 0);
+        return;
+    }
+    mq->first = (mq->first + count) % mq->msgCount;
+    mq->validCount -= count;
+    pthread_cond_broadcast(&pq->cond);
+    pthread_mutex_unlock(&pq->lock);
+    __scAppendList(sc, task);
+    if (mixed) __scAppendList(sc, second);
+    OSScTask *sp = NULL, *dp = NULL;
+    // Queue now even if an older frame is in flight. Its normal SP/DP
+    // completion handlers will consider this task without an extra retrace.
+    s32 available = (!sc->curRSPTask ? OS_SC_NEEDS_RSP : 0) |
+                    (!sc->curRDPTask ? OS_SC_NEEDS_RDP : 0);
+    if ((!mixed && (sc->doAudio || sc->audioListHead)) || available != (OS_SC_NEEDS_RSP | OS_SC_NEEDS_RDP)) {
+        ftRecord(FT_WAKE_SERVICE, 0, 1);
+        return;
+    }
+    if (__scSchedule(sc, &sp, &dp, available) != available) {
+        ftRecord(FT_WAKE_SERVICE, 0, 2);
+        __scExec(sc, sp, dp);
+    } else ftRecord(FT_WAKE_SERVICE, 0, 3);
+}
+#endif
 
 extern OSMesgQueue gfxFrameMsgQ; /* src/init.c */
 
@@ -667,6 +753,9 @@ s32 osRecvMesg(OSMesgQueue *mq, OSMesg *msg, s32 flag)
     mq->first = (mq->first + 1) % mq->msgCount;
     --mq->validCount;
     if (msg) *msg = m;
+#if defined(GE_LAN_HOST) || defined(__XBOX__)
+    if (mq == &os_scheduler.interruptQ && ftPairTrace()) ftRecord(FT_IRQ_RECEIVE, 0, (uintptr_t)m);
+#endif
     pthread_cond_signal(&pq->cond);
     pthread_mutex_unlock(&pq->lock);
     /* gfxFrameMsgQ is consumed only by boss.c's game thread. Apply queued
@@ -751,6 +840,7 @@ static void portPostVIEvent(void)
          * end of a synchronous fast3d frame. A retrace posted into a backlog
          * is stale anyway -- sched has not drained the previous one yet. */
         if (g_viRetraceMQ->validCount >= g_viRetraceMQ->msgCount - 2) return;
+        ftRecord(FT_VI, 0, g_viRetraceMQ->validCount);
         osSendMesg(g_viRetraceMQ, g_viRetraceMsg, OS_MESG_NOBLOCK);
     }
 }
@@ -1250,10 +1340,12 @@ void osSpTaskLoad(OSTask *t) { (void)t; /* nothing to load on the host */ }
 static void portRenderGfxTask(Gfx *dl)
 {
     uint64_t t0 = sysGetMicroseconds();
+    ftRenderStart((uintptr_t)dl);
     videoStartFrame();
     videoSyncSplitScreen();
     gfx_run(dl);
     videoEndFrame();
+    ftRecord(FT_RENDER_END, ftRenderId, 0);
     g_lastFrameUs = sysGetMicroseconds();
     if (++g_framesRendered <= 5 || (g_framesRendered % 300) == 0)
         sysLogPrintf(LOG_NOTE, "frame %d rendered in %llu us",
@@ -1357,6 +1449,10 @@ void osSpTaskStartGo(OSTask *t)
             "DETERMTRACE seq=%u ticks=%u event=first_task_run tasktype=%d",
             ++g_determTraceSeq, g_determTicks, (int)t->t.type);
     }
+    #if defined(GE_LAN_HOST) || defined(__XBOX__)
+    if (t->t.type == M_AUDTASK && ftPairTrace()) ftRecord(FT_AUDIO_START, 0, 0);
+#endif
+    if (t->t.type != M_AUDTASK) ftRecord(FT_HANDOFF, 0, (uintptr_t)t->t.data_ptr);
     g_determTaskEverRun = 1;   /* GE_DETERM: §D117 M-52 3rd attempt */
     if (t->t.type == M_AUDTASK) {
         /* Phase 3: execute the audio ucode against t->t.data_ptr (an Acmd
@@ -1472,6 +1568,7 @@ typedef struct PortTimer {
 } PortTimer;
 
 static PortTimer g_ptimers[PORT_MAX_TIMERS];
+static pthread_mutex_t s_timerLock = PTHREAD_MUTEX_INITIALIZER;
 
 /* cycles -> microseconds at the RSP counter rate. Inverse of
  * OS_USEC_TO_CYCLES(). */
@@ -1486,6 +1583,7 @@ int osSetTimer(OSTimer *timer, OSTime start, OSTime period,
     PortTimer *pt = NULL;
     int i;
 
+    pthread_mutex_lock(&s_timerLock);
     timer->interval = period;
     timer->value = start;
     timer->mq = mq;
@@ -1495,7 +1593,10 @@ int osSetTimer(OSTimer *timer, OSTime start, OSTime period,
         if (g_ptimers[i].os == timer) { pt = &g_ptimers[i]; break; }
         if (!g_ptimers[i].active && !pt) pt = &g_ptimers[i];
     }
-    if (!pt) return -1;
+    if (!pt) {
+        pthread_mutex_unlock(&s_timerLock);
+        return -1;
+    }
 
     pt->os = timer;
     pt->active = 1;
@@ -1504,18 +1605,22 @@ int osSetTimer(OSTimer *timer, OSTime start, OSTime period,
     sysLogPrintf(LOG_NOTE, "timer set: t=%p start=%lluus period=%uus mq=%p",
                  (void *)timer, (unsigned long long)portCyclesToUs(start),
                  pt->periodUs, (void *)mq);
+    pthread_mutex_unlock(&s_timerLock);
     return 0;
 }
 
 int osStopTimer(OSTimer *timer)
 {
     int i;
+    pthread_mutex_lock(&s_timerLock);
     for (i = 0; i < PORT_MAX_TIMERS; ++i) {
         if (g_ptimers[i].os == timer) {
             g_ptimers[i].active = 0;
+            pthread_mutex_unlock(&s_timerLock);
             return 0;
         }
     }
+    pthread_mutex_unlock(&s_timerLock);
     return -1;
 }
 
@@ -1523,17 +1628,20 @@ static void portServiceTimers(void)
 {
     uint64_t now = sysGetMicroseconds();
     int i;
+    pthread_mutex_lock(&s_timerLock);
     for (i = 0; i < PORT_MAX_TIMERS; ++i) {
         PortTimer *pt = &g_ptimers[i];
-        if (!pt->active) continue;
-        while (pt->fireUs <= now) {
+        while (pt->active && pt->fireUs <= now) {
+            /* The receiver can rearm this same stack timer as soon as its
+             * queue wakes. Finish the old firing before delivering it. */
+            if (pt->periodUs) pt->fireUs += pt->periodUs;
+            else pt->active = 0;
             sysLogPrintf(LOG_NOTE, "timer fire: t=%p mq=%p",
                          (void *)pt->os, (void *)pt->os->mq);
             osSendMesg(pt->os->mq, pt->os->msg, OS_MESG_NOBLOCK);
-            if (!pt->periodUs) { pt->active = 0; break; }
-            pt->fireUs += pt->periodUs;
         }
     }
+    pthread_mutex_unlock(&s_timerLock);
 }
 
 /* Earliest timer deadline, or UINT64_MAX. */
@@ -1541,10 +1649,12 @@ static uint64_t portNextTimerUs(void)
 {
     uint64_t earliest = ~0ull;
     int i;
+    pthread_mutex_lock(&s_timerLock);
     for (i = 0; i < PORT_MAX_TIMERS; ++i) {
         PortTimer *pt = &g_ptimers[i];
         if (pt->active && pt->fireUs < earliest) earliest = pt->fireUs;
     }
+    pthread_mutex_unlock(&s_timerLock);
     return earliest;
 }
 

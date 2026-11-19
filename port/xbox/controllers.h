@@ -6,6 +6,7 @@
 extern "C" {
 #endif
 
+void inputStartEgyptTest(void);
 int inputInit(void);
 void inputUpdate(void);
 int inputConnectedMask(void);

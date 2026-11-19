@@ -1,4 +1,9 @@
 #include "../finals_controls.h"
+#include "render_profile.h"
+#include "port/lan/frame_trace.h"
+
+XboxRenderProfile xboxRenderProfile;
+static uint64_t renderStart, frameStartTriangles;
 // NV2A rendering backend for Perfect Dark X (Original Xbox port).
 //
 // Implements GfxRenderingAPI using NXDK's pbkit push-buffer interface.
@@ -44,6 +49,7 @@ extern "C" {
 
 extern "C" void xboxAcquireBackBuffer();
 extern "C" void serialPuts(const char *s);
+extern int gfx_fog_vertex;
 
 // ── NV097 indexed-register helpers ──────────────────────────────────────────
 // In NXDK's nv_regs.h, NV097_SET_COMBINER_* and NV097_SET_TEXTURE_* are plain
@@ -681,6 +687,7 @@ static void nv2a_upload_texture(const uint8_t *rgba32_buf,
                                  uint32_t width, uint32_t height,
                                  bool gen_mipmaps)
 {
+    XboxProfileScope timer(xboxRenderProfile.uploads);
     // gfx_pc selects a tile immediately before uploading into it.
     const int tile = g_last_selected_tile;
     int tex_id = g_active_texture[tile];
@@ -730,6 +737,8 @@ static void nv2a_upload_texture(const uint8_t *rgba32_buf,
         g_texture_program_valid = false;
         return;
     }
+
+    if (xboxProfileEnabled) xboxRenderProfile.bytes += (uint64_t)width * height * 4;
 
     // Convert RGBA to the A8R8G8B8 byte layout used by NV2A. Native textures
     // are Morton/Z ordered; linear NPOT surfaces retain their padded pitch.
@@ -1750,6 +1759,11 @@ static void nv2a_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
                                  size_t buf_vbo_num_tris)
 {
     if (!g_current_shader || buf_vbo_num_tris == 0) return;
+    XboxProfileScope timer(xboxRenderProfile.submit);
+    if (xboxProfileEnabled) {
+        ++xboxRenderProfile.draws;
+        xboxRenderProfile.triangles += buf_vbo_num_tris;
+    }
     nv2a_prepare_textures_for_draw();
     g_dbg_tris += (unsigned)buf_vbo_num_tris;
     ++g_dbg_draws;
@@ -2120,6 +2134,9 @@ extern "C" bool xboxDrawWheel(int slot, int left, int top, int w, int h,
 
 static void nv2a_init(void)
 {
+    // The final combiner consumes normalized fog alpha in the specular byte.
+    // Request per-vertex RSP fog before fast3d packs the first draw.
+    gfx_fog_vertex = 1;
     memset(g_textures, 0, sizeof(g_textures));
     memset(g_framebuffers, 0, sizeof(g_framebuffers));
     g_framebuffers[0].used = true;
@@ -2320,7 +2337,13 @@ uint32_t g_SPXBFramebufferHeight = 0;
 static void nv2a_start_frame(void)
 {
     pb_reset();
-    xboxAcquireBackBuffer();
+    {
+        XboxProfileScope timer(xboxRenderProfile.acquire);
+        xboxAcquireBackBuffer();
+        ftRecord(FT_ACQUIRED, ftRenderId, 0);
+        frameStartTriangles = xboxRenderProfile.triangles;
+    }
+    if (xboxProfileEnabled) renderStart = xboxRenderClock();
     g_stream_vertex_cursor = 0;
     g_current_framebuffer = FB_BACK_BUFFER;
     g_target_width = pb_back_buffer_width();
@@ -2375,11 +2398,17 @@ static void nv2a_finish_render(void)
     // Hand the pushbuffer to the GPU and wait for it. Without this the
     // commands are never executed and we present a buffer nothing drew into.
     xboxFinalsOverlay(g_target_width, g_target_height);
-    while (pb_busy()) {
-        /* GPU still consuming */
+    ftRecord(FT_TRIANGLES, ftRenderId, xboxRenderProfile.triangles - frameStartTriangles);
+    ftRecord(FT_DRAIN, ftRenderId, 0);
+    if (xboxProfileEnabled) xboxRenderProfile.render += xboxRenderClock() - renderStart;
+    {
+        XboxProfileScope timer(xboxRenderProfile.drain);
+        while (pb_busy()) { /* GPU still consuming */ }
+        ftRecord(FT_GPU_IDLE, ftRenderId, 0);
     }
-    while (pb_finished()) {
-        /* waiting on swap prepare */
+    {
+        XboxProfileScope timer(xboxRenderProfile.present);
+        while (pb_finished()) { /* waiting on swap prepare */ }
     }
 
 #if defined(PD_XBOX_RENDER_QUALIFY_EFFECTS)

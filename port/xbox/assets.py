@@ -188,9 +188,20 @@ def pack(rom):
             raise ValueError(f"{name}: {exc}") from exc
         enc = zlib.compressobj(9, wbits=-15)
         replacements.append((1, start, b'\x11\x72' + enc.compress(new) + enc.flush()))
-    for name, convert in (("bg_ref_all_p_seg", background), ("Tbg_ref_all_p_stanZ", collision),
-                          ("Ump_setuprefZ", complex_setup)):
+    # Basement and Stack use the Library geometry with distinct prop setups.
+    geometry = ("dish", "ref", "oat", "ame", "ark", "sevb", "arch", "cave", "cryp")
+    file_table = (REPO / "assets/obseg/file_resource_table.inc.c").read_text()
+    bg_symbols = dict(re.findall(r'"bg/bg_(\w+)_all_p\.seg",\s*&(\w+)', file_table))
+    stages = [(bg_symbols[tag], background) for tag in geometry]
+    stages += [(f"Tbg_{tag}_all_p_stanZ", collision) for tag in geometry]
+    stages += [(f"Ump_setup{tag}Z", multiplayer_setup) for tag in (*geometry, "imp", "ash")]
+    for name, convert in stages:
         start, stop = symbols[name], symbols["end_" + name]
+        if name == bg_symbols["ame"] and stop == start:
+            # The IMP linker label has zero length. The Library file spans
+            # this shared offset up to the next distinct background resource.
+            stop = min(addr for symbol, addr in symbols.items()
+                       if symbol.startswith("bg_") and addr > start)
         blob = rom[start:stop]
         if name.startswith("bg_"):
             replacements.append((1, start, convert(blob)))
@@ -198,7 +209,7 @@ def pack(rom):
             enc = zlib.compressobj(9, wbits=-15)
             data = convert(zlib.decompress(blob[2:], -15))
             replacements.append((1, start, b'\x11\x72' + enc.compress(data) + enc.flush()))
-    header = bytearray(struct.pack('<4sI', b'GE32', len(replacements)))
+    header = bytearray(struct.pack('<4sI', b'GE33', len(replacements)))
     data = bytearray()
     for kind, start, blob in replacements:
         data += bytes(-len(data) % 16)
@@ -249,7 +260,7 @@ def collision(src):
     return r.dst
 
 
-def complex_setup(src):
+def multiplayer_setup(src):
     r = Records(src)
     tables = [r.read(4 * i) for i in range(10)]
     r.swap(0, 4, 10)
@@ -287,12 +298,18 @@ def complex_setup(src):
     p = tables[3]
     while p:
         tag = src[p + 3]
-        words = {8: 34, 20: 45, 21: 34, 48: 1}[tag]
+        # N64 / Xbox ILP32 word counts from sizepropdef, shared by all retail
+        # multiplayer stages. Mixed-width door words follow DoorRecord.
+        words = {1: 64, 2: 2, 3: 32, 8: 34, 10: 64, 12: 32, 20: 45,
+                 21: 34, 42: 32, 47: 37, 48: 1}[tag]
         r.swap(p, 4, words)
         r.dst[p + 2:p + 4] = src[p + 2:p + 4]
         r.swap(p, 2)
         if tag == 48:
             break
+        if tag == 2:  # DoorScaleRecord has only the header and a 32-bit scale.
+            p += 4 * words
+            continue
         r.swap(p + 4, 2, 2)
         r.dst[p + 120:p + 128] = src[p + 120:p + 128]
         if tag == 8:
@@ -300,5 +317,11 @@ def complex_setup(src):
             r.swap(p + 130, 2)
         if tag == 20:
             r.swap(p + 128, 2, 26)
+        if tag == 1:
+            r.swap(p + 38 * 4, 2, 2)
+            r.dst[p + 47*4:p + 47*4+2] = src[p + 47*4:p + 47*4+2]
+            r.swap(p + 47*4+2, 2)
+            r.swap(p + 49*4, 2)
+            r.dst[p + 49*4+2:p + 50*4] = src[p + 49*4+2:p + 50*4]
         p += 4 * words
     return r.dst

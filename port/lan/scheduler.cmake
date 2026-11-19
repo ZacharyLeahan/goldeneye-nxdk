@@ -1,0 +1,15 @@
+# Generate a port-only scheduler switch case. Normal retraces still use the
+# original handler and deliver its VI, input, music and client notifications.
+set(scheduler_source "${GE_SCHED_ROOT}/src/sched.c")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${scheduler_source}")
+file(READ "${scheduler_source}" scheduler_text)
+set(wake_anchor "            case VIDEO_MSG:")
+string(FIND "${scheduler_text}" "${wake_anchor}" wake_anchor_pos)
+if(wake_anchor_pos LESS 0)
+  message(FATAL_ERROR "Review the graphics wake after scheduler source change")
+endif()
+string(REPLACE "${wake_anchor}" "            case PORT_GFX_WAKE_MSG:\n            case PORT_GFX_PAIR_MSG:\n                portEarlyGraphics(sc, (s32)msg == PORT_GFX_PAIR_MSG);\n                break;\n${wake_anchor}" scheduler_text "${scheduler_text}")
+string(REPLACE "#include \"sched.h\"" "#include \"sched.h\"\n#include \"port/lan/frame_trace.h\"\nextern void portEarlyGraphics(OSSched *sc, int pair);" scheduler_text "${scheduler_text}")
+string(REPLACE "    long type = t->list.t.type;" "    long type = t->list.t.type;\n    if (type == M_GFXTASK && ftPairTrace()) ftRecord(FT_CMD_APPEND, 0, (uintptr_t)t->list.t.data_ptr);" scheduler_text "${scheduler_text}")
+set(port_scheduler "${CMAKE_CURRENT_BINARY_DIR}/lan-scheduler.c")
+file(CONFIGURE OUTPUT "${port_scheduler}" CONTENT "${scheduler_text}" @ONLY)

@@ -27,8 +27,6 @@ if errorlevel 1 (
   exit /b 1
 )
 :host
-echo Enter the wired Ethernet IPv4 address on the Xbox.
-ipconfig
-echo Starting two-player Complex on UDP 27007. Waiting for the Xbox to join.
+echo Enter the address shown in the Windows game on the Xbox LAN Multiplayer screen.
 "%~dp0ge007.x86_64.exe" --lan-host
 if errorlevel 1 pause

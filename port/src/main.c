@@ -68,6 +68,8 @@ static void portPrintHelp(const char *argv0)
     printf("\nusage: %s [options] [-level_XX]\n\n"
 #ifdef GE_LAN_HOST
            "  --lan-host        host two-player Complex on the wired LAN (UDP 27007)\n"
+           "  --lan-join IPv4   join a LAN match at the Windows host address\n"
+           "  --lan-port PORT   override the UDP port for a Windows pair\n"
 #endif
            "  --help            this message\n"
            "  --version         build id only\n"
@@ -169,8 +171,8 @@ int main(int argc, char **argv)
     configLoad();
     videoApplySteamDeckPreset();
 #ifdef GE_LAN_HOST
-    if (sysArgCheck("--lan-host")) {
-        if (!lanDesktopHost()) return 1;
+    if (sysArgCheck("--lan-host") || sysArgCheck("--lan-join")) {
+        if (!lanDesktopStart()) return 1;
     } else
 #endif
     updateCheckStart();   /* opt-in (Game.CheckUpdates, default off); no-op otherwise */
@@ -232,7 +234,7 @@ int main(int argc, char **argv)
         return 1;
     }
 #ifdef GE_LAN_HOST
-    if (lanIsHost() && !lanDesktopWait()) return 0;
+    if (lanActive() && !lanDesktopWait()) return 0;
 #endif
     audioInit();
     mixerInit();
