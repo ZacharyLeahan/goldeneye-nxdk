@@ -24,14 +24,21 @@ static struct {
 } pads[MAXCONTROLLERS];
 
 static int egyptTest;
+static int localFourTest;
 static Uint32 egyptStart;
 
 int xboxEgyptTestActive(void) { return egyptTest; }
+int xboxLocalFourTestActive(void) { return localFourTest; }
 
 void inputStartEgyptTest(void)
 {
     egyptStart = SDL_GetTicks();
     egyptTest = 1;
+}
+
+void inputStartLocalFourTest(void)
+{
+    localFourTest = 1;
 }
 
 static int egyptTrigger(void)
@@ -51,7 +58,8 @@ int inputConnectedMask(void)
     int mask = 0;
     for (int i = 0; i < MAXCONTROLLERS; ++i)
         if (pads[i].device) mask |= 1 << i;
-    return lanActive() ? (mask | 3) : mask;
+    if (lanActive()) return mask | 3;
+    return localFourTest ? (mask | 15) : mask;
 }
 
 static int stick(int axis)

@@ -154,7 +154,9 @@ unsigned xboxProfileGame(int *stage, int *shots, unsigned *throws)
 #endif
 """
         replace('const char *smp = getenv("GE_STARTMP");',
-                'const char *smp = lanActive() ? "2" : getenv("GE_STARTMP");')
+                'extern int xboxLocalFourTestActive(void);\n'
+                '            const char *smp = lanActive() ? "2" : '
+                '(xboxLocalFourTestActive() ? "4,2" : getenv("GE_STARTMP"));')
         anchor = "if (comma) MP_stage_selected = (s32)strtol(comma + 1, NULL, 0);"
         replace(anchor, anchor + "\n                if (lanActive()) MP_stage_selected = lanArena();")
         replace("init_mp_options_for_scenario(np);", """init_mp_options_for_scenario(np);

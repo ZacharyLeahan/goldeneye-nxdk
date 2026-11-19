@@ -63,6 +63,11 @@ For an Xbox dashboard installation, copy `default.xbe`, `xbox.bin` and
 These private outputs contain cartridge data. Running the packager without
 `--rom` builds the executable alone.
 
+For the private four-player emulator check, add `--local-four-test`. The
+resulting XISO includes `ge-local-four.on`, exposes four idle controller seats
+and boots four-player Complex directly. The marker is never packaged without
+that explicit flag.
+
 On a physical Xbox, launching `default.xbe` from XBMC has been verified
 through file select and into two-player split-screen Complex. The test used a
 controller in port 1 and direct IP-KVM input in port 2 to turn and walk the
@@ -73,13 +78,18 @@ wheel. The hardware recorded four grenade launches. The three seven-second
 samples containing throws averaged 59.8–60.0 FPS with 19–20 ms p95 frame
 intervals.
 
+A private xemu image built with `--local-four-test` booted Complex with four
+simultaneous viewports, four distinct spawn positions and four player markers.
+That verifies the Xbox build's four-seat local path in emulation. Four physical
+controllers on original hardware are still owed.
+
 ### Play Complex locally
 
-1. Bind controllers to Xbox ports 1 and 2 before entering multiplayer setup.
+1. Bind two to four controllers to contiguous Xbox ports before entering multiplayer setup.
 2. At file select, point the left stick at a dossier and press A. The mode
    page lists **Local Multiplayer** and **LAN Multiplayer**. Select **Local Multiplayer** with A. On Windows, select **Multiplayer** in the dossier first.
 3. Multiplayer Options opens with **Level Complex** selected. Check that it
-   shows **Players 2**. The level picker displays Complex in the top row,
+   shows the connected count under **Players**. The level picker displays Complex in the top row,
    third tile. The picker enforces each arena's native player limit.
 4. Press Start to begin. Each player uses the left stick to move and the
    right stick to look. Pushing the right stick up looks up. A jumps, B
