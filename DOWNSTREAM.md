@@ -66,7 +66,12 @@ These private outputs contain cartridge data. Running the packager without
 For the private four-player emulator check, add `--local-four-test`. The
 resulting XISO includes `ge-local-four.on`, exposes four idle controller seats
 and boots four-player Complex directly. The marker is never packaged without
-that explicit flag.
+that explicit flag. An empty marker selects Complex. A decimal number from
+1 through 11 selects the corresponding arena in multiplayer menu order.
+For repeatable hardware combat in a private QA directory, add `ge-close.on`
+to start the four players together. Respawns use the normal spawn selection.
+With `ge-profile.on` enabled, `ge-scores.csv` records the stage ID followed
+by 16 kill counts, ordered by attacker and then victim from P1 through P4.
 
 On a physical Xbox, launching `default.xbe` from XBMC has been verified
 through file select and into two-player split-screen Complex. The test used a
@@ -80,8 +85,174 @@ intervals.
 
 A private xemu image built with `--local-four-test` booted Complex with four
 simultaneous viewports, four distinct spawn positions and four player markers.
-That verifies the Xbox build's four-seat local path in emulation. Four physical
-controllers on original hardware are still owed.
+On original hardware, all four controller ports responded independently on
+Complex. Simultaneous grenade deaths reproduced a music sequence assertion.
+The Xbox sequence-state shim now accounts for queued playback when another
+death requests the same sequence player.
+
+The original Xbox completed a four-controller combat round on each of the
+eleven arenas using wired P1 and wireless receivers for P2 through P4. The
+private test used a common initial spawn so a designated shooter could hit
+the other three players. Each arena recorded all four physical ports and a
+kill against each opponent. For Caverns, the earlier apparent freeze left
+the renderer running while the game saw only P3 and P4. The Xbox host now
+retries attached USB devices that failed to enumerate, and the input layer
+opens controllers by their current physical port after a connection change.
+A subsequent Archives launch in the private test folder stayed black before
+gameplay. The earlier Archives round completed and recorded three opponent
+kills. The cause of the later launch failure is unconfirmed.
+
+#### Four-player frame times on original Xbox
+
+The scored combat sweep measured 10,996 completed frames over 322.79 seconds
+with 19,371 vertical blanks. The game averaged **34.07 FPS**. All eleven
+arenas missed the 60 FPS target. The profiler records intervals between
+completed frames. Display refresh counts alone cannot establish how many
+distinct frames reached the screen.
+
+| Arena | Average FPS | FPS in windows with grenade throws | Worst sampled p95 (ms) | Longest frame (ms) |
+|---|---:|---:|---:|---:|
+| Caverns | 24.5 | 17.0 | 86 | 286 |
+| Facility | 36.0 | 22.9 | 69 | 333 |
+| Stack | 36.8 | 22.1 | 72 | 897 |
+| Basement | 37.0 | 23.5 | 70 | 435 |
+| Library | 35.6 | 22.4 | 82 | 971 |
+| Caves | 36.1 | 21.4 | 75 | 591 |
+| Complex | 35.4 | 23.3 | 69 | 713 |
+| Temple | 38.9 | 22.9 | 75 | 351 |
+| Bunker | 35.4 | 20.4 | 75 | 368 |
+| Archives | 35.7 | 21.7 | 70 | 574 |
+| Egypt | 28.2 | 21.9 | 73 | 355 |
+
+Each row combines seven-second windows from one match with a shared initial
+spawn. The first second and writes between windows are excluded. FPS uses
+total frames divided by total sampled time. The p95 column reports the
+highest individual window's 95th percentile. Windows with grenade throws
+include the surrounding gameplay. These short runs do not measure long-match
+stability or typical play from random spawn positions.
+
+Across the matched renderer samples, the interval from back-buffer acquisition
+to the start of the final GPU drain averaged 20.82 ms. This includes 4.03 ms
+in draw submission. The subsequent drain averaged 1.95 ms and presentation
+averaged 0.11 ms. The pre-drain interval alone exceeded the 16.67 ms total
+frame budget.
+
+A separate four-controller Caverns firefight measured **17.01 distinct
+displayed frames per second** across 710 sampled refreshes at 60 Hz, with
+no gaps in refresh sampling. The median display interval was 50.0 ms and
+p95 was 83.33 ms. One image stayed on screen for 65 refresh periods.
+Of the repeated refreshes classified by the trace, 341 occurred during
+display-list work outside the backend draw callback, 97 inside that callback,
+59 while constructing the next game frame and four during the final GPU drain.
+On the longest game frame, three seats spent a combined 983 ms after
+background rendering and before finishing their view. These are wall times.
+
+A replay of the same four-player grenade exchange traced the long game-thread
+pause to three calls that restarted the death music. Each call waited for the
+previous sequence to stop. The Xbox port now yields the CPU to the audio
+worker while waiting. With busy polling, the three waits totaled 570.57 ms
+and the longest game frame took 579.32 ms before submission. With the yield,
+the waits totaled 58.64 ms and the longest game frame took 67.39 ms. Both
+physical runs recorded kills against all three opponents. The longest
+observed interval between new images fell from 38 refresh periods to six.
+The p95 display interval was still 83.33 ms in both runs.
+
+A stationary four-player Caverns comparison alternated the existing
+material-reuse optimization on and off across eight three-second blocks.
+It raised displayed FPS from 17.44 to 17.54. Both conditions had a 66.67 ms
+p95 interval. The release configuration retains its existing material behavior.
+A separate trial reused the packed vertices of consecutive triangles. It
+measured 17.23 displayed FPS against 17.35 FPS with the regular writer.
+The trial was discarded.
+
+To capture local display timing, place `ge-split-trace.on` and
+`ge-profile.on` beside a private profiling build, enter local multiplayer,
+and retrieve `ge-frame.bin` from the game folder. The trace starts after a
+two-second warmup and runs for twelve seconds. Analyze it with
+`python port/lan/tests/frame_trace.py ge-frame.bin`. It joins game frames,
+render tasks and scanned surfaces and reports timing for each active seat.
+In the private local test, adding `ge-close.on` and `ge-local-volley.on`
+replays a grenade exchange from the same spawn and ties its inputs to the
+trace start. Omit the volley marker for physical-controller testing.
+
+#### Local multiplayer release measurements
+
+The original Xbox ran a repeatable close-range grenade exchange in each
+arena. Inputs came from the test script. Each result requires the selected
+arena and seat count in the console log, a kill against every opponent, and
+a trace that accounts for every interior rendered frame on the display.
+Each cell gives distinct displayed FPS over a twelve-second capture and
+the 95th-percentile interval between displayed frames in milliseconds.
+At a steady 60 FPS that interval would be 16.7 ms. These short combat
+samples use the sequence-stop fix and normal rendering with the overlay
+disabled. The earlier four-controller sweep used physical input and
+measured render completions over longer rounds.
+
+| Arena | 2 players FPS / p95 ms | 3 players FPS / p95 ms | 4 players FPS / p95 ms |
+|---|---:|---:|---:|
+| Temple | 50.5 / 33.3 | 45.1 / 50.0 | 23.7 / 83.3 |
+| Complex | 50.7 / 33.3 | 37.8 / 50.0 | 22.4 / 66.7 |
+| Caves | 49.7 / 33.3 | 41.9 / 50.0 | 21.9 / 83.3 |
+| Library | 49.6 / 50.0 | 39.8 / 50.0 | 25.0 / 66.7 |
+| Basement | 49.9 / 50.0 | 37.3 / 50.0 | 22.2 / 66.7 |
+| Stack | 50.4 / 33.3 | 40.1 / 50.0 | 25.7 / 66.7 |
+| Facility | 49.6 / 50.0 | 44.7 / 50.0 | 24.5 / 66.7 |
+| Bunker | 48.9 / 50.0 | 36.3 / 50.0 | 20.1 / 83.3 |
+| Archives | 50.5 / 33.3 | 34.5 / 50.0 | 21.2 / 83.3 |
+| Caverns | 42.9 / 50.0 | 27.8 / 66.7 | 20.4 / 66.7 |
+| Egypt | 44.1 / 50.0 | 36.5 / 50.0 | 18.7 / 83.3 |
+
+In four-player Caverns the CPU spent 33.0 ms per rendered frame processing
+the visible display list outside the backend draw callback. The callback
+took another 8.8 ms and the final GPU drain averaged 1.4 ms. Display-list
+processing alone exceeded the entire 16.7 ms frame budget.
+
+Separate KVM runs exercised controller input for about 70 sampled seconds
+per arena at two and three players. At each player count, eight of eleven
+rounds registered kills against every opponent. A three-player Caves launch
+stayed black before gameplay. The retry reached gameplay and scored. A
+separate four-player Caverns overlay test recorded all three opponent kills
+before the console stopped responding on return to XBMC. Both incidents
+required a power cycle. Their causes remain open.
+
+A longer Caverns match on the overlay-capable build used normal spawn
+positions, the overlay hidden and the four physical controller routes.
+Each port took two turns as the grenade thrower. The console recorded
+12 throws and a self-kill for each seat, then returned to XBMC through
+the controller reset chord. The opening trace measured 24.82 displayed
+FPS with a 50.0 ms p95 interval. The separate completion logger averaged
+55.01 FPS across 238.31 sampled seconds, including time on respawn screens.
+
+#### Performance overlay
+
+Create an empty file named `ge-perf-hud.on` beside `default.xbe` and launch
+the game. The overlay appears once at the top of the screen in single-player
+and split-screen. Put `test` at the start of the file to show the longest
+display interval in the last five seconds. Remove the file and relaunch to
+hide the overlay.
+
+FPS counts distinct scanned framebuffers over the last second. The graph
+shows five seconds of intervals between new images. Horizontal guides mark
+16.7 and 33.3 ms. Above 33.3 ms the vertical scale compresses to keep long
+hitches visible. When several frames fall in one column its peak survives.
+The overlay refreshes its text and graph about four times per second.
+
+**Prep** measures elapsed time from acquiring the back buffer through
+command preparation and overlay drawing. **GPU wait** measures the final
+wait for submitted work to drain. Both are averages of the frames since
+the last overlay update. **Free** is available physical memory in MiB.
+The overlay uses the completed display intervals directly and works
+independently of CSV logging and frame tracing.
+
+In a stationary four-player Caverns hardware test, eight alternating
+three-second blocks measured 15.70 displayed FPS with the overlay hidden
+and 15.64 with it visible. Both conditions had an 83.33 ms p95, p99 and
+longest observed display interval. The capture missed one refresh sample
+in the visible condition. This comparison used the testing view.
+Separate four-player grenade replays scored against all three opponents
+with the overlay hidden and visible. They measured 17.42 and 17.71 displayed
+FPS respectively. The alternating blocks above provide the closer comparison
+of overlay overhead.
 
 ### Play Complex locally
 
@@ -90,7 +261,7 @@ controllers on original hardware are still owed.
    page lists **Local Multiplayer** and **LAN Multiplayer**. Select **Local Multiplayer** with A. On Windows, select **Multiplayer** in the dossier first.
 3. Multiplayer Options opens with **Level Complex** selected. Check that it
    shows the connected count under **Players**. The level picker displays Complex in the top row,
-   third tile. The picker enforces each arena's native player limit.
+   third tile. On Xbox, the picker offers all eleven arenas with **Players** set to four.
 4. Press Start to begin. Each player uses the left stick to move and the
    right stick to look. Pushing the right stick up looks up. A jumps, B
    toggles crouch, Y interacts, X reloads, LT aims, and RT fires. Click the

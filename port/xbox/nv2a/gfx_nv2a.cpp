@@ -1,5 +1,6 @@
 #include "../finals_controls.h"
 #include "render_profile.h"
+#include "../perf_hud.h"
 #include "port/lan/frame_trace.h"
 
 XboxRenderProfile xboxRenderProfile;
@@ -135,7 +136,8 @@ static inline void nv2a_copy_pixels(uint32_t *dst, const uint32_t *src,
 #define MAX_GAME_TEXTURES 1025
 #define MAX_FRAMEBUFFERS  32
 #define FIRST_WHEEL_TEXTURE (MAX_GAME_TEXTURES + MAX_FRAMEBUFFERS)
-#define MAX_TEXTURES (FIRST_WHEEL_TEXTURE + 4)
+#define PERF_HUD_TEXTURE (FIRST_WHEEL_TEXTURE + 4)
+#define MAX_TEXTURES (PERF_HUD_TEXTURE + 1)
 #define TEXTURE_TILE_COUNT 2
 #define NV2A_TEXTURE_STAGE_COUNT 4
 
@@ -2074,10 +2076,8 @@ static void nv2a_draw_triangles(float buf_vbo[], size_t buf_vbo_len,
 
 // Draw a cached straight-alpha wheel as a pair of triangles. Each slot owns
 // its texture. The render thread has drained the previous frame before reuse.
-extern "C" bool xboxDrawWheel(int slot, int left, int top, int w, int h,
-                              const uint32_t *replacement)
+static bool drawOverlayTile(int id, int left, int top, int w, int h, const uint32_t *replacement)
 {
-    const int id = FIRST_WHEEL_TEXTURE + slot;
     NV2ATexture &texture = g_textures[id];
     if (replacement) {
         const unsigned pitch = (w * 4u + 63u) & ~63u;
@@ -2131,6 +2131,18 @@ extern "C" bool xboxDrawWheel(int slot, int left, int top, int w, int h,
     pb_end(p);
     return true;
 }
+
+extern "C" bool xboxDrawWheel(int slot,int left,int top,int w,int h,const uint32_t *replacement)
+{
+    return drawOverlayTile(FIRST_WHEEL_TEXTURE+slot,left,top,w,h,replacement);
+}
+
+extern "C" bool xboxDrawPerfTile(int left,int top,int w,int h,const uint32_t *replacement)
+{
+    return drawOverlayTile(PERF_HUD_TEXTURE,left,top,w,h,replacement);
+}
+
+static bool showPerfHud;
 
 static void nv2a_init(void)
 {
@@ -2343,7 +2355,8 @@ static void nv2a_start_frame(void)
         ftRecord(FT_ACQUIRED, ftRenderId, 0);
         frameStartTriangles = xboxRenderProfile.triangles;
     }
-    if (xboxProfileEnabled) renderStart = xboxRenderClock();
+    showPerfHud = xboxHudConfigured && xboxHudBeginFrame();
+    if (xboxProfileEnabled || showPerfHud) renderStart = xboxRenderClock();
     g_stream_vertex_cursor = 0;
     g_current_framebuffer = FB_BACK_BUFFER;
     g_target_width = pb_back_buffer_width();
@@ -2398,12 +2411,18 @@ static void nv2a_finish_render(void)
     // Hand the pushbuffer to the GPU and wait for it. Without this the
     // commands are never executed and we present a buffer nothing drew into.
     xboxFinalsOverlay(g_target_width, g_target_height);
+    if (showPerfHud) xboxHudDraw(g_target_width,g_target_height);
     ftRecord(FT_TRIANGLES, ftRenderId, xboxRenderProfile.triangles - frameStartTriangles);
     ftRecord(FT_DRAIN, ftRenderId, 0);
-    if (xboxProfileEnabled) xboxRenderProfile.render += xboxRenderClock() - renderStart;
+    const uint64_t drainStart = xboxProfileEnabled || showPerfHud ? xboxRenderClock() : 0;
+    if (xboxProfileEnabled) xboxRenderProfile.render += drainStart - renderStart;
     {
-        XboxProfileScope timer(xboxRenderProfile.drain);
         while (pb_busy()) { /* GPU still consuming */ }
+        if (xboxProfileEnabled || showPerfHud) {
+            const uint64_t wait = xboxRenderClock() - drainStart;
+            if (xboxProfileEnabled) xboxRenderProfile.drain += wait;
+            if (showPerfHud) xboxHudFrameCost(drainStart-renderStart,wait);
+        }
         ftRecord(FT_GPU_IDLE, ftRenderId, 0);
     }
     {
