@@ -4,7 +4,7 @@ Play split-screen on one machine, or give each player a full screen on the same 
 
 | Mode | How to play |
 | --- | --- |
-| **Local Multiplayer** | Connect two to four controllers, select **Local Multiplayer**, then choose the arena and rules in Multiplayer Options. Two-player firefights have been tested on original Xbox hardware. Four-player split-screen has been verified in xemu on Complex; a four-pad hardware pass is still owed. |
+| **Local Multiplayer** | Connect two to four controllers, select **Local Multiplayer**, then choose the arena and rules in Multiplayer Options. All 11 arenas have been tested on an original Xbox. On each map the game detected four physical controllers and credited grenade kills against all three opponents. |
 | **LAN Multiplayer** | One Windows PC hosts a two-player match. An original Xbox or another Windows PC joins by entering the host’s LAN IPv4 address. Each player has a full-screen view. The host tracks hits, kills, pickups, scores and rematches. |
 
 On Xbox, select a dossier to see both modes. On Windows, open **Multiplayer** in the dossier. For LAN, choose **Host Match** on Windows, then **Join Match** on the other PC or **LAN Multiplayer** on Xbox. Enter the address shown by the host. The default is Complex on UDP 27007. The host and guest should run builds from the same revision.
@@ -28,13 +28,24 @@ Supply your own retail US (NTSC-U) ROM. On Windows, prepare the model and level 
 
 ## Performance on Windows and original Xbox
 
+**Original Xbox split-screen falls short of sustained 60 FPS during close-range grenade combat.** Each average below gives equal weight to all 11 arenas, using one 12-second replay per arena and player count. FPS counts distinct frames displayed on the console.
+
+| Local players | Average displayed FPS | Range across arenas |
+| --- | ---: | ---: |
+| 2 | 48.8 | 42.9–50.7 |
+| 3 | 38.3 | 27.8–45.1 |
+| 4 | 22.3 | 18.7–25.7 |
+
+Four-player combat was slowest on Egypt and fastest on Stack. Across the 11 four-player runs, the 95th-percentile frame interval ranged from 66.7 to 83.3 ms. A steady 60 FPS would display a new frame every 16.7 ms. [Per-arena results and test conditions](DOWNSTREAM.md#local-multiplayer-release-measurements)
+
 | Platform and workload | Measured frame rate |
 | --- | --- |
 | Windows, fixed Egypt camera, two game processes on one PC | **60.00 FPS host / 59.99 FPS guest**. Each rate uses the time between 1,437 consecutive render completions over about 24 seconds. |
 | Original Xbox, same Egypt LAN firefight, 480p | **50.00 → 59.13 displayed FPS** with the scheduler fix. Observed repeated refreshes fell from **113 to 8**. The 95th-percentile display interval fell from 33.33 to 16.67 ms. |
 | Original Xbox, heavy two-player Egypt split-screen | **46.29 displayed FPS** across 925 comparable camera steps with the regular vertex writer. Both players turned, fired and threw grenades. |
+| Original Xbox, four-player local combat on all 11 arenas | **34.07 completed FPS** over 322.79 seconds. The slowest arena was Caverns at 24.5 FPS overall and 17.0 FPS during the grenade window. [Per-arena frame times](DOWNSTREAM.md#four-player-frame-times-on-original-xbox) |
 
-Windows timing comes from the game’s render thread. Xbox timing comes from physical display refreshes. The LAN guest draws one full-screen view. Local split-screen draws both players’ views. [Windows replay and measurement instructions](DOWNSTREAM.md) · [Xbox LAN measurements](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7015760434) · [Xbox split-screen measurements](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7016289480)
+Completed FPS counts render completions. Displayed FPS counts distinct frames seen at physical Xbox refreshes. The LAN guest draws one full-screen view. Local split-screen draws each active player's view. To see displayed FPS and recent frame times during play, place an empty `ge-perf-hud.on` file beside the Xbox executable and relaunch. [Performance overlay](DOWNSTREAM.md#performance-overlay) · [Windows replay and measurement instructions](DOWNSTREAM.md) · [Xbox LAN measurements](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7015760434) · [Xbox split-screen measurements](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7016289480)
 
 The largest LAN gain came from starting graphics work sooner. When an audio task and a graphics task arrived together, the earlier scheduler left both queued until the next refresh. Accepting the pair immediately and preserving audio priority cut average submission-to-handoff time from **4.05 to 0.66 ms**. The renderer also skips drawing the hidden LAN seat while continuing its gameplay updates. Reusing material setup across vertex loads saved another **0.14–0.18 ms per frame** in two separate hardware trials. [Scheduler trace](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7015760434) · [Material reuse trials](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7014737918)
 

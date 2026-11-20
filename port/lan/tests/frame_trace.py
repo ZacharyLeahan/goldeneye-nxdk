@@ -10,7 +10,9 @@ import struct
 NAMES = ("", "vi", "gate", "game", "build", "seat", "vis", "props", "bg",
          "after_bg", "seat_end", "submit", "handoff", "render", "end",
          "queue", "ready", "scan", "acquired", "drain", "idle", "triangles", "shots", "view_draw", "list_begin", "list_end", "wake_mode", "wake_service", "tri4_cost",
-         "cmd_queue", "wake_post", "irq_receive", "cmd_append", "wake_depth", "audio_start")
+         "cmd_queue", "wake_post", "irq_receive", "cmd_append", "wake_depth", "audio_start",
+         "after_particles", "before_gun", "after_gun_update", "after_gun_model", "before_watch",
+         "before_blood", "after_blood", "before_death_music", "after_death_music", "seq_wait_begin", "seq_wait_end")
 
 
 def read(path):
@@ -77,6 +79,7 @@ def summarize(path, boot=False):
     wake_dispatches = []
     early_gate_times = []
     byte_counts = defaultdict(list)
+    sequence_starts, sequence_waits = {}, []
     for t, kind, frame, arg in events:
         name = NAMES[kind]
         if name == "vi":
@@ -86,11 +89,18 @@ def summarize(path, boot=False):
             gates[(arg >> 1, bool(arg & 1))] += 1
             if arg & 1:
                 early_gate_times.append(t)
+        elif name == "seq_wait_begin":
+            sequence_starts[arg] = t
+        elif name == "seq_wait_end":
+            if arg in sequence_starts:
+                sequence_waits.append((t-sequence_starts.pop(arg))*1000/hz)
         elif name in ("game", "build", "submit"):
             games[frame][name] = t
             if name == "submit":
                 submissions[arg].append(frame)
-        elif name in ("seat", "vis", "props", "bg", "after_bg", "seat_end"):
+        elif name in ("seat", "vis", "props", "bg", "after_bg", "seat_end",
+                       "after_particles", "before_gun", "after_gun_update", "after_gun_model", "before_watch",
+                       "before_blood", "after_blood", "before_death_music", "after_death_music"):
             seat = arg >> 32 if name == "seat_end" else arg
             games[frame][name, seat] = t
             if name == "seat_end":
@@ -154,11 +164,14 @@ def summarize(path, boot=False):
                 renders[frame][name + "_surface"] = arg
     # Capture can cut a frame at either end. Require complete joins in the interior.
     ids = sorted(renders)[2:-2]
+    seats = sorted(byte_counts)
+    if not boot and seats not in ([0, 1], [0, 1, 2], [0, 1, 2, 3]):
+        raise ValueError(f"Unexpected multiplayer seat IDs: {seats}")
     complete = []
     for rid in ids:
         r = renders[rid]
         g = games.get(r.get("game_id"), {})
-        required = ["game", "submit"] if boot else ["game", "build", "submit"] + [(k, s) for s in (0, 1)
+        required = ["game", "submit"] if boot else ["game", "build", "submit"] + [(k, s) for s in seats
                     for k in ("seat", "vis", "props", "bg", "after_bg", "seat_end")]
         if not all(k in g for k in required) or not g["game"] <= g.get("build", g["game"]) <= g["submit"] <= r["handoff"] <= r["render"] <= r["end"]:
             raise ValueError(f"Broken game/task/render join for frame {rid}")
@@ -169,6 +182,8 @@ def summarize(path, boot=False):
         raise ValueError("No complete frames")
     def ms(x): return 1000 * x / hz
     print(f"{len(complete)} complete frames; {len(events)} events; zero overflow")
+    if sequence_waits:
+        print("Sequence-stop waits above 1 ms:", [round(v, 2) for v in sequence_waits if v > 1])
     print("Software VI posts:", vi_posts, "gate visits (pending, too early):", dict(gates))
     has_lists = any("list_begin" in r for g,r in complete)
     if has_lists:
@@ -274,6 +289,8 @@ def summarize(path, boot=False):
                 print(f"  Audio starts across included submission intervals: {audio}")
             elif wake_test:
                 label = "Early wake"
+            elif min(samples) >= 96:
+                label = "Performance overlay"
             elif min(samples) >= 64:
                 label = "TRI4 projected positions"
                 for r in rows:
@@ -335,7 +352,17 @@ def summarize(path, boot=False):
                 raise ValueError("Missing or reordered boot frame")
             print(f"Verified {len(ids)} game/task/render/surface IDs at {len(middle)} scanouts")
         return
-    for s in (0, 1):
+    worst_game, _ = max(complete, key=lambda pair: pair[0]["submit"] - pair[0]["game"])
+    print("Longest game frame before submission:", round(ms(worst_game["submit"] - worst_game["game"]), 2), "ms")
+    for s in seats:
+        detail = ("after_bg", "after_particles", "before_gun", "after_gun_update",
+                  "after_gun_model", "before_blood", "after_blood", "before_death_music",
+                  "after_death_music", "before_watch", "seat_end")
+        available = [k for k in detail if (k,s) in worst_game]
+        for a,b in zip(available,available[1:]):
+            elapsed = ms(worst_game[b,s] - worst_game[a,s])
+            if elapsed > 16.67:
+                print(f"  Seat {s} {a}->{b}: {elapsed:.2f} ms")
         marks = ("seat", "vis", "props", "bg", "after_bg", "seat_end")
         spans = [(a, b, ms(mean(g[b, s]-g[a, s] for g, _ in complete)))
                  for a, b in zip(marks, marks[1:])]

@@ -2,6 +2,10 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef __XBOX__
+#include "lan.h"
+extern int getPlayerCount(void);
+#endif
 
 // Fixed event storage, reserved only for an opted-in run. The IRQ hook writes
 // one slot without locking or allocating. The game thread flushes after capture.
@@ -11,6 +15,9 @@ static unsigned capacity = 49152;
 static struct Event *records;
 static unsigned count, active, stopCount;
 static int phase, bootCheck, compareDraw;
+#ifdef __XBOX__
+static int traceLocalSplit;
+#endif
 static uint64_t frequency, warm, start;
 unsigned ftGameId, ftRenderId;
 
@@ -60,6 +67,8 @@ static unsigned comparisonTag(unsigned base)
 }
 
 static int comparePair;
+static int compareHud, hudVisible;
+int ftHudVisible(void) { return hudVisible && ftRecording(); }
 
 int ftPairTrace(void)
 {
@@ -101,7 +110,10 @@ int ftListBegin(void)
     drawTicks = 0;
     unsigned flags = tag ? FT_LIST_REUSE_MATERIAL : 0;
     tri4Ticks = tri4Commands = 0;
-    if (compareTri4) {
+    if (compareHud) {
+        tag = comparisonTag(96);
+        hudVisible = tag & 1;
+    } else if (compareTri4) {
         tag = comparisonTag(64);
         flags |= FT_LIST_TRACE_TRI4;
         if (tag & 1) flags |= FT_LIST_PROJECT_TRI4;
@@ -109,7 +121,7 @@ int ftListBegin(void)
     else if (compareWake || compareDraw) tag = 0;
     ftRecord(FT_LIST_BEGIN, ftRenderId, tag);
     __atomic_store_n(&rasterPhase, (ftRenderId << 2) | 1u, __ATOMIC_RELEASE);
-    if (!compareTri4) flags = (tag & 1) ? FT_LIST_REUSE_MATERIAL : 0;
+    if (!compareTri4 && !compareHud) flags = (tag & 1) ? FT_LIST_REUSE_MATERIAL : 0;
     return FT_LIST_TIMED | flags;
 }
 
@@ -174,6 +186,10 @@ void ftGameStart(int eligible)
 #ifdef __XBOX__
         FILE *marker = fopen("D:\\ge-trace.on", "rb");
         if (!marker) {
+            marker = fopen("D:\\ge-split-trace.on", "rb");
+            traceLocalSplit = marker != NULL;
+        }
+        if (!marker) {
             marker = fopen("D:\\ge-boot-trace.on", "rb");
             bootCheck = marker != NULL;
         }
@@ -195,6 +211,8 @@ void ftGameStart(int eligible)
         if (tri4) { compareTri4 = 1; fclose(tri4); }
         FILE *pair = fopen("D:\\ge-pair-ab.on", "rb");
         if (pair) { comparePair = 1; fclose(pair); }
+        FILE *hud = fopen("D:\\ge-hud-ab.on", "rb");
+        if (hud) { compareHud = traceLocalSplit; fclose(hud); }
 #else
         compareDraw = getenv("GE_LAN_DRAW_AB") != NULL;
         compareWake = getenv("GE_WAKE_AB") != NULL;
@@ -212,6 +230,14 @@ void ftGameStart(int eligible)
         frequency = hz.QuadPart;
         phase = 1;
     }
+    unsigned seconds = bootCheck ? 4 : 24;
+#ifdef __XBOX__
+    if (traceLocalSplit) {
+        eligible = !lanActive() && getPlayerCount() >= 2;
+        // An A/B comparison needs all eight three-second blocks.
+        seconds = compareMaterial || compareTri4 || comparePair || compareWake || compareHud ? 24 : 12;
+    }
+#endif
     if (bootCheck) eligible = 1;
     if (phase == 1) {
         if (!eligible) { warm = 0; return; }
@@ -224,7 +250,7 @@ void ftGameStart(int eligible)
         __atomic_store_n(&active, 1, __ATOMIC_RELEASE);
         phase = 2;
     }
-    if (phase == 2 && (!eligible || traceClock() - start >= (bootCheck ? 4 : 24) * frequency)) {
+    if (phase == 2 && (!eligible || traceClock() - start >= seconds * frequency)) {
         __atomic_store_n(&active, 0, __ATOMIC_RELEASE);
         stopCount = __atomic_load_n(&count, __ATOMIC_ACQUIRE);
         phase = 3;

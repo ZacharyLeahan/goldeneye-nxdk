@@ -41,6 +41,16 @@ def adapt(unit, source, *, xbox=False):
         replace("end = (u8 *)&g_BgCurrentRoom;", "end = specialportalarray + sizeof(specialportalarray);")
         replace("} while ((u32)ptr < (u32)end);", "} while (ptr < end);")
     elif unit == "bondview2":
+        if xbox:
+            source = '#include "port/lan/frame_trace.h"\n' + source
+            anchor = "gunUpdateAndFireBothHands();"
+            replace(anchor, "ftRecord(FT_BEFORE_GUN, ftGameId, get_cur_playernum());\n    " + anchor +
+                    "\n    ftRecord(FT_AFTER_GUN_UPDATE, ftGameId, get_cur_playernum());")
+            anchor = "gunRenderFirstPersonGunModels(&gdl);"
+            replace(anchor, anchor + "\n    ftRecord(FT_AFTER_GUN_MODEL, ftGameId, get_cur_playernum());")
+            for call, event in (("die_blood_image_routine(0);", "BLOOD"),
+                                ("set_missionstate(6);", "DEATH_MUSIC")):
+                replace(call, f"ftRecord(FT_BEFORE_{event}, ftGameId, get_cur_playernum());\n                {call}\n                ftRecord(FT_AFTER_{event}, ftGameId, get_cur_playernum());")
         replace("if (joyGetButtons(get_cur_playernum(), 0xB000))",
                 "if (lanRespawnButton(joyGetButtons(get_cur_playernum(), 0xB000)))")
         respawn_end = "currentPlayerStartChrFade(120.0f, 1.0f);\n}"
@@ -139,6 +149,10 @@ unsigned finalsGetGrenadeThrows(int slot) { return finalsGrenadeThrows[slot]; }
                 "\n    if (lanActive() && stage != LEVELID_TITLE) { extern void lanEnterRound(void); lanEnterRound(); }")
         source += """
 #ifdef __XBOX__
+int xboxProfileKills(int attacker, int victim)
+{
+    return g_playerPlayerData[attacker].kill_counts[victim];
+}
 unsigned xboxProfileGame(int *stage, int *shots, unsigned *throws)
 {
     extern unsigned finalsGetGrenadeThrows(int slot);
@@ -153,12 +167,15 @@ unsigned xboxProfileGame(int *stage, int *shots, unsigned *throws)
 }
 #endif
 """
-        replace('const char *smp = getenv("GE_STARTMP");',
-                'extern int xboxLocalFourTestActive(void);\n'
-                '            const char *smp = lanActive() ? "2" : '
-                '(xboxLocalFourTestActive() ? "4,2" : getenv("GE_STARTMP"));')
+        start_mp = 'lanActive() ? "2" : getenv("GE_STARTMP")'
+        setup = ''
+        if xbox:
+            setup = 'extern int xboxLocalFourTestActive(void);\n            '
+            start_mp = 'lanActive() ? "2" : (xboxLocalFourTestActive() ? "4,2" : getenv("GE_STARTMP"))'
+        replace('const char *smp = getenv("GE_STARTMP");', setup + f'const char *smp = {start_mp};')
         anchor = "if (comma) MP_stage_selected = (s32)strtol(comma + 1, NULL, 0);"
-        replace(anchor, anchor + "\n                if (lanActive()) MP_stage_selected = lanArena();")
+        replace(anchor, anchor + "\n                if (lanActive()) MP_stage_selected = lanArena();"
+                + ("\n                else if (xboxLocalFourTestActive()) MP_stage_selected = xboxLocalFourTestActive();" if xbox else ""))
         replace("init_mp_options_for_scenario(np);", """init_mp_options_for_scenario(np);
                 if (lanActive()) {
                     player_char[0] = lanIsHost() ? 0 : 1;
@@ -182,6 +199,10 @@ unsigned xboxProfileGame(int *stage, int *shots, unsigned *throws)
             replace(token, f"ftRecord({event}, ftGameId, get_cur_playernum());\n            " + token)
         replace("DL = bgLevelRender(DL);", "DL = bgLevelRender(DL);\n            ftRecord(FT_AFTER_BG, ftGameId, get_cur_playernum());")
         anchor = "DL = mp_watch_menu_display(DL);"
+        if xbox:
+            particles = "DL = explosionRenderFlyingParticles(DL);"
+            replace(particles, particles + "\n            ftRecord(FT_AFTER_PARTICLES, ftGameId, get_cur_playernum());")
+            replace(anchor, "ftRecord(FT_BEFORE_WATCH, ftGameId, get_cur_playernum());\n            " + anchor)
         replace(anchor, anchor + "\n            ftRecord(FT_SEAT_END, ftGameId, ((uint64_t)get_cur_playernum() << 32) | (uint32_t)((char *)DL - (char *)viewStart));" +
                 "\n            if (lanActive() && get_cur_playernum() != 0) DL = viewStart;" +
                 "\n            lanSkipViewDraw = 0;")

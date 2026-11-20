@@ -11,12 +11,24 @@
 #include "gfx_pc.h"
 #include "nv2a/gfx_nv2a.h"
 #include "nv2a/render_profile.h"
+#include "perf_hud.h"
 #include "controllers.h"
 #include "port/lan/lan.h"
 #include "port/lan/frame_trace.h"
 #include <cstdlib>
 
 static_assert(sizeof(Gfx) == 8 && sizeof(Vtx) == 16 && sizeof(Mtx) == 64);
+static bool recoverStalledTest;
+
+static void recoverFatalTest(const char *reason)
+{
+    if (!recoverStalledTest) return;
+    if (FILE *log = fopen("D:\\ge-fatal.log", "a")) {
+        fprintf(log, "%lu %s\n", (unsigned long)GetTickCount(), reason);
+        fclose(log);
+    }
+    XLaunchXBE(NULL);
+}
 
 extern "C" {
 extern unsigned char mainThread[];
@@ -65,7 +77,18 @@ void sysFatalError(const char *fmt, ...)
     va_end(args);
     serialPuts(buf);
     debugPrint("%s\n", buf);
+    recoverFatalTest(buf);
     for (;;) Sleep(1000);
+}
+
+extern "C" void _xbox_assert(const char *expr, const char *file, const char *func, unsigned long line)
+{
+    char message[384];
+    snprintf(message, sizeof(message), "%s:%lu %s: %s", file, line, func, expr);
+    serialPuts(message);
+    debugPrint("%s\n", message);
+    recoverFatalTest(message);
+    for (;;) __asm__ volatile("cli; hlt");
 }
 
 const char *sysGetTokenString() { return ""; }
@@ -82,9 +105,9 @@ extern "C" int romdataCartAddrValid(unsigned a, unsigned n)
     return a >= cart && a - cart <= mappedBytes && n <= mappedBytes - (a - cart);
 }
 extern "C" unsigned xboxProfileGame(int *stage, int *shots, unsigned *throws);
+extern "C" int xboxProfileKills(int attacker, int victim);
 bool xboxProfileEnabled;
 static unsigned xboxRenderSample;
-static bool recoverStalledTest;
 static volatile LONG lastProgress;
 
 extern "C" void xboxLoadCheckpoint(int stage, const char *step)
@@ -155,6 +178,16 @@ static void profileMultiplayerFrame()
     uint64_t endClock = xboxRenderClock();
     unsigned elapsedVBlanks = (unsigned)pb_get_vbl_counter() - startVBlank;
     qsort(intervals, count, sizeof(intervals[0]), compareTimes);
+    if (xboxLocalFourTestActive()) {
+        if (FILE *scores = fopen("D:\\ge-scores.csv", "a")) {
+            fprintf(scores, "%d", current);
+            for (int attacker = 0; attacker < seats; ++attacker)
+                for (int victim = 0; victim < seats; ++victim)
+                    fprintf(scores, ",%d", xboxProfileKills(attacker, victim));
+            fprintf(scores, "\n");
+            fclose(scores);
+        }
+    }
     FILE *out = fopen("D:\\ge-profile.csv", "a");
     if (out) {
         fprintf(out, "%d,%s,%u,%u,%u,%u,%d,%d,%d,%u,%u,%u\n", stage, lanActive() ? "lan" : "split",
@@ -198,6 +231,7 @@ extern "C" u32 videoGetFrameCount() { return frame; }
 
 int main()
 {
+    xboxHudInit();
     if (FILE *marker = fopen("D:\\ge-recover.on", "rb")) {
         recoverStalledTest = true;
         fclose(marker);
@@ -253,12 +287,14 @@ int main()
     mixerInit();
     if (inputInit()) sysFatalError("Controller initialization failed");
     if (FILE *marker = fopen("D:\\ge-local-four.on", "rb")) {
+        int arena = 2;
+        if (fscanf(marker, "%d", &arena) != 1 || arena < 1 || arena > 11) arena = 2;
         fclose(marker);
-        inputStartLocalFourTest();
+        inputStartLocalFourTest(arena);
         serialPuts("local four-player emulator fixture enabled\r\n");
     }
     // A private benchmark can join directly, including on a controllerless rig.
-    DWORD testStarted = 0;
+    DWORD testStarted = recoverStalledTest && xboxLocalFourTestActive() ? GetTickCount() : 0;
     char hostAddress[32] = {};
     unsigned hostPort = 0;
     bool firingTest = false;

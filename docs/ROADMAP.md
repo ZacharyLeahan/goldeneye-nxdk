@@ -184,10 +184,21 @@ A single campaign pass with these on the checklist would clear most of them.
 | Windows display scaling: the game is not DPI-aware on scaled displays | open | — | Seen 2026-10-07 during the v0.5.0 4K captures: on a 3840x2160 display at 125% Windows gives the game a 3072x1728 surface and stretches it, so the picture is softer than native. `gfx_sdl2.cpp` sets `SDL_HINT_WINDOWS_DPI_AWARENESS` only when `allow_hidpi` is off; setting it (`permonitorv2`) on the HiDPI path too renders at native resolution. Workaround today: environment variable `SDL_WINDOWS_DPI_AWARENESS=permonitorv2`. |
 | Original Xbox (downstream fork) | partial | D573–D596 | The physical Xbox joined and fired on all eleven LAN arenas after the Temple portal fix. Complex hardware checks covered kills, respawns, an ammo pickup, death-drop collection from both seats and a scored rematch. Two local Windows seats selected and used grenades on each arena, and four seats did so in Complex. Windows also passed death-drop collection, score limits, rematches and guest/host process restarts. A startup timer fix passed 24 fresh Windows boots. Caching Fast3D material setup raised the slow Egypt firing view from 34.0 to 38.8 FPS on Xbox. Two later traces at the matched camera showed a 33.3 ms p95 display interval. The next frame awaited scheduler handoff or renderer submission on repeated refreshes. The unused LAN seat took 0.63–0.69 ms per frame including gameplay. Draw-only suppression saved 0.10 ms per frame at the slow Egypt camera. Both modes had a 33.33 ms p95 display interval. Visible Egypt lists took 9.41 ms outside the backend draw callback and 3.14 ms inside. An early graphics wake reached 59.92 versus 52.71 displayed FPS in a matched hardware A/B; p95 fell to 16.67 ms. A repeat with both players firing reached 59.75 versus 51.21 FPS. Reusing material across vertex loads saved 0.14–0.18 ms per frame in two hardware trials. A TRI4 projection trial saved 0.10 ms/frame and left p95 at 33.33 ms. The long frames started list processing about 8.6 ms later relative to the target refresh. Accepting an audio/graphics pair on the early Egypt LAN wake cut the physical handoff from 4.05 to 0.66 ms and p95 from 33.33 to 16.67 ms. LAN now restores the native black sky fill ([#21](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21)). Physical two-controller Complex split-screen recorded four successful grenade throws at 59.8–60.0 FPS across the three seven-second samples containing throws. PC Ethernet, a physical Windows controller check, WAN-disconnected play, quick slap and hit bars remain open. [Xbox controls and test results](../DOWNSTREAM.md#original-xbox) |
 
-**Original Xbox four-player local (D596):** the local-mode transition now
+**Original Xbox local multiplayer (D596–D598):** the local-mode transition now
 initializes from all connected pads, and four simultaneous Complex viewports
-were verified in xemu. A four-controller pass on original hardware remains
-open; LAN remains intentionally two-player.
+were verified in xemu. Four physical controllers completed scored combat on
+all eleven arenas. Sustained 60 FPS remains open. The four-player sweep
+averaged 34.07 FPS, with grenade windows as low as 17.0 FPS on Caverns.
+Yielding to the audio worker during death music reduced the worst measured
+Caverns game-thread frame from 579.32 to 67.39 ms. Four-player grenade
+replays on the fixed build ran at 18.7–25.7 displayed FPS. All 33
+arena and player-count combinations scored against every opponent.
+Two-player replays reached 42.9–50.7 displayed FPS and three-player
+replays reached 27.8–45.1. The largest
+measured cost in Caverns was CPU processing of the visible display list.
+Extended matches, consistent 16.7 ms display intervals and investigation of
+intermittent black launches and dashboard returns remain open.
+[Local multiplayer release measurements](../DOWNSTREAM.md#local-multiplayer-release-measurements)
 
 ## 5. Modern-remaster layer (port features beyond the N64)
 
