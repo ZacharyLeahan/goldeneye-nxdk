@@ -1,5 +1,4 @@
-/* Experimental separate-character Simulant proof. Enable with
- * GE_MP_SIM_PROBE=1; no player/controller slot is consumed. */
+/* Facility local match: one AI character shares the arena with two human seats. */
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -60,6 +59,7 @@ typedef struct SimProbeRoute {
     PropRecord *blockedWeapon;
     unsigned weaponBlockedUntil;
     int noWeaponLogged;
+    unsigned shots;
     unsigned nextShot;
     unsigned flashUntil;
     unsigned recoilUntil;
@@ -79,8 +79,6 @@ typedef struct SimProbeRuntime {
 static SimProbeRuntime s_probe = { .lastStage = -1, .route = { .goal = -1, .blockedGoal = -1 } };
 /* One byte per body/head ID: only models used by this probe are invalidated. */
 static unsigned char s_botModelUsed[HEAD_END];
-static int s_lastBotBody = -1;
-static int s_lastBotHead = -1;
 static waypoint *s_originalWaypoints;
 static waygroup *s_originalGroups;
 static int s_readyStage = -1;
@@ -148,6 +146,7 @@ void simulantProbeStageTeardown(void)
 {
     if (simProbeRosterTrace() && mpRosterStage() >= 0)
         sysLogPrintf(LOG_NOTE, "sim roster: end stage %d", mpRosterStage());
+    if (s_readyStage == LEVELID_FACILITY && mpRosterCount() == 3) mpSimulantsSetCount(0, 0);
     s_readyStage = -1;
     mpRosterEnd();
     /* Restore the stage's own tables after character/object cleanup, before
@@ -170,7 +169,6 @@ void simulantProbeStageTeardown(void)
         }
     }
     memset(s_botModelUsed, 0, sizeof(s_botModelUsed));
-    s_lastBotBody = s_lastBotHead = -1;
     simProbeResetRuntime();
 }
 
@@ -439,6 +437,7 @@ static void simProbeCombat(ChrRecord *chr, unsigned polls, SimProbeRoute *route)
                                            sound, NULL);
         if (playing) chrobjSndCreatePostEventDefault(playing, &chr->prop->pos);
     }
+    ++route->shots;
     mpCombatDamageHuman(mpRosterSlotForChr(chr->chrnum), victim,
                         0.125f * gunItemGetDestructionAmount(item),
                         dx / sqrtf(dx * dx + dz * dz + 1.0f),
@@ -542,6 +541,34 @@ static void simProbeWalk(ChrRecord *chr, unsigned polls, SimProbeRoute *route)
     }
 }
 
+#ifdef __XBOX__
+/* Optional stock-console QA trace. Sample once per 60 ticks for a bounded run. */
+static void simTrace(unsigned tick)
+{
+    static int enabled = -1;
+    if (enabled < 0) {
+        FILE *marker = fopen("D:\\ge-sim-trace.on", "rb");
+        enabled = marker != NULL;
+        if (marker) fclose(marker);
+    }
+    if (!enabled || tick % 60 || tick > 18000) return;
+    FILE *out = fopen("D:\\ge-sim.csv", tick == 60 ? "w" : "a");
+    if (!out) return;
+    PropRecord *bot = simulantProbeGetProp();
+    fprintf(out, "%u,%d,%d,%d,%d,%d,%d", tick, getPlayerCount(), mpRosterCount(),
+            bot ? bot->chr->chrnum : -1, bot ? (int)bot->pos.x : 0,
+            bot ? (int)bot->pos.z : 0, bot ? bot->chr->actiontype : -1);
+    for (int seat = 0; seat < 2; ++seat) {
+        PropRecord *prop = g_playerPointers[seat] ? g_playerPointers[seat]->prop : NULL;
+        fprintf(out, ",%d,%d,%d", prop ? (int)prop->pos.x : 0,
+                prop ? (int)prop->pos.z : 0, g_playerPlayerData[seat].shot_count[0]);
+    }
+    fprintf(out, ",%u,%d,%d\n", s_probe.route.shots, g_playerPointers[0] ? (int)(100*g_playerPointers[0]->bondhealth) : -1,
+            g_playerPointers[1] ? (int)(100*g_playerPointers[1]->bondhealth) : -1);
+    fclose(out);
+}
+#endif
+
 void simulantProbePoll(void)
 {
     SimProbeRuntime *probe = &s_probe;
@@ -570,6 +597,9 @@ void simulantProbePoll(void)
         probe->lastStage = stage;
     }
     ++probe->polls;
+#ifdef __XBOX__
+    simTrace(probe->polls);
+#endif
     if (!g_ChrSlots || g_NumChrSlots < 3) return;
 
     /* Stage setup and its STAN links have been initialized by this point. */
@@ -653,8 +683,6 @@ void simulantProbePoll(void)
         s_botModelUsed[body] = 1;
         if (!c_item_entries[body].hasHead && head >= 0 && head < HEAD_END)
             s_botModelUsed[head] = 1;
-        s_lastBotBody = body;
-        s_lastBotHead = head;
     }
     PropRecord *spawned = chrSpawnAtCoord(body, head,
                                           &bestPad->pos, bestPad->stan,
@@ -666,7 +694,6 @@ void simulantProbePoll(void)
         int actualHead = spawned->chr->headnum;
         if (actualHead >= 0 && actualHead < HEAD_END) {
             s_botModelUsed[actualHead] = 1;
-            s_lastBotHead = actualHead;
         }
     }
     if (!spawned || !spawned->chr) {

@@ -9,7 +9,7 @@ list(APPEND SRC "${port_scheduler}")
 
 include("${CMAKE_CURRENT_LIST_DIR}/simulants.cmake")
 list(APPEND SRC ${bot_sources})
-foreach(unit chraction boss lv bg model bondview2 gun propobj chrprop mpmenu)
+foreach(unit radar chraction boss lv bg model bondview2 gun propobj chrprop mpmenu)
   set(src "${CMAKE_SOURCE_DIR}/src/game/${unit}.c")
   if(unit STREQUAL "boss")
     set(src "${CMAKE_SOURCE_DIR}/src/boss.c")

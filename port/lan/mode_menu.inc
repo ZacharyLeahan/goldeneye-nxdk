@@ -150,6 +150,7 @@ static void multiplayerMenuTick(void)
         gamemode = GAMEMODE_MULTI;
         init_mp_options_for_scenario(2);
         reset_mp_options_for_scenario(SCENARIO_NORMAL);
+        game_length = LEN_10MIN;
         for (int i = 1; i < (int)(sizeof(multi_stage_setups) / sizeof(multi_stage_setups[0])); ++i)
             if (multi_stage_setups[i].stage_id == LEVELID_FACILITY) { MP_stage_selected = i; break; }
         selected_stage = LEVELID_FACILITY;

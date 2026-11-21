@@ -33,6 +33,8 @@ Play the solo campaign, share a couch for split-screen, or go head-to-head with 
 | **LAN Multiplayer** | Use matching builds on the same LAN. Pick **Host Match** on either machine. On the other, pick **Join Match** and select the host. **Enter IP manually** is also available. | Original Xbox and Windows have each hosted a two-player match in Complex. [Host discovery](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/23) Ã‚Â· [Xbox hosting](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/24) |
 | **Local Multiplayer** | Connect controllers, choose an arena and rules in Multiplayer Options, then press Start. | Two-player firefights and four-player split-screen have run on original Xbox. All eleven arenas support four players on Xbox. |
 
+**Facility with a Simulant (prototype).** Connect two controllers, highlight **Local Multiplayer**, and press **D-pad right** to start Facility with one computer opponent. Both players keep their own half of the screen. Press **A** on the same row for the regular couch setup.
+
 ## Where GE32 fits
 
 This fork focuses on original Xbox couch play with modern controls. The Windows build offers the same three modes and can play a private LAN match with a matching Xbox build. Both games use the upstream PC port's dossier and this fork's LAN code. GE32 public lobbies run on a separate multiplayer system.

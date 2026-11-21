@@ -141,9 +141,9 @@ emit("bondview_r.c", adapt(spawn, spawn_choice, spawn_choice +
      "\n            extern int xboxCloseSpawnTest(void);\n            if (xboxCloseSpawnTest()) rand_pad_index = 0;"))
 emit("boss.c", adapt_lan("boss", (repo / "src/boss.c").read_text(), xbox=True))
 
-for unit in ("chraction", "lv", "bg", "model", "spectrum", "image_bank", "objecthandler", "initunk_005450", "loadobjectmodel", "front", "bondview2", "gun", "propobj", "chrprop", "mpmenu"):
+for unit in ("radar", "chraction", "lv", "bg", "model", "spectrum", "image_bank", "objecthandler", "initunk_005450", "loadobjectmodel", "front", "bondview2", "gun", "propobj", "chrprop", "mpmenu"):
     src = (repo / f"src/game/{unit}.c").read_text()
-    if unit in ("chraction", "lv", "bg", "model", "bondview2", "gun", "propobj", "chrprop", "mpmenu"):
+    if unit in ("radar", "chraction", "lv", "bg", "model", "bondview2", "gun", "propobj", "chrprop", "mpmenu"):
         src = adapt_lan(unit, src, xbox=True)
     # COFF has no ELF weak aliases. Alias the references within the original TU.
     src = re.sub(r'^#pragma weak (\w+) = (\w+)$', r'#define \1 \2', src, flags=re.M)
