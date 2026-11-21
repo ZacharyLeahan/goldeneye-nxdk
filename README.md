@@ -11,9 +11,15 @@ Our goals are easy couch play and private LAN cross-play, a shared modern contro
 | Solo Campaign · Dam | Local Multiplayer · Complex |
 | --- | --- |
 | ![Bond approaching the first checkpoint on Dam](docs/img/dam-solo.jpg) | ![Four split-screen views of a grenade firefight in Complex](docs/img/complex-split-screen.jpg) |
-| Xbox build running in xemu | Four players on one original Xbox |
+| <img src="docs/img/icon/xbox.svg" width="32" height="20" alt=""> Original Xbox build running in xemu | <img src="docs/img/icon/xbox.svg" width="32" height="20" alt=""> Four players on one original Xbox |
 
 ## Choose a game mode
+
+| <img src="docs/img/icon/windows.svg" width="16" height="16" alt=""> Windows · Main dossier | <img src="docs/img/icon/xbox.svg" width="32" height="20" alt=""> Original Xbox · Joining a LAN match |
+| --- | --- |
+| ![The Windows dossier lists Solo Campaign, LAN Multiplayer and Local Multiplayer in order](docs/img/mode-menu.jpg) | ![The Xbox lists an available GoldenEye host playing Complex with one of two slots filled](docs/img/lan-matches.jpg) |
+
+For a two-player match, choose **LAN Multiplayer** on both machines. On one, choose **Host Match**. On the other, choose **Join Match** and select the host under **Available LAN Matches**. In the Xbox capture, **Complex 1/2** means one player is in the match and one slot is open. Choose **Refresh** if the host started after you opened the list.
 
 | Windows and Xbox dossier option | How to play | Tested |
 | --- | --- | --- |
@@ -33,25 +39,40 @@ The launcher opens the finished folders after an interactive build.
 
 | Build | What to do next |
 | --- | --- |
-| **Windows** | Open `build-pc\play` and launch `ge007.x86_64.exe`. Keep its DLLs and `data` folder with it. |
-| **Original Xbox** | Copy all three files from `build-xbox\disc` into one game folder on your Xbox. Launch `default.xbe` from the dashboard. For xemu, load the locally generated `build-xbox\ge007.iso` in a 64 MiB Xbox profile. |
+| <img src="docs/img/icon/windows.svg" width="16" height="16" alt=""> **Windows** | Open `build-pc\play` and launch `ge007.x86_64.exe`. Keep its DLLs and `data` folder with it. |
+| <img src="docs/img/icon/xbox.svg" width="32" height="20" alt=""> **Original Xbox** | Copy all three files from `build-xbox\disc` into one game folder on your Xbox. Launch `default.xbe` from the dashboard. For xemu, load the locally generated `build-xbox\ge007.iso` in a 64 MiB Xbox profile. |
 
 For command-line use, run `build.cmd windows`, `build.cmd xbox`, or `build.cmd both`. In a source checkout or extracted source archive the same script builds that copy. The standalone download fetches its tagged source into a folder beside the launcher. Keep the resulting game and cartridge files private. [Release notes](https://github.com/ZacharyLeahan/goldeneye-nxdk/releases/tag/builder-1.0) · [Manual Windows build](docs/building.md) · [Manual Xbox build](DOWNSTREAM.md#build-and-boot)
-
-## Where GE32 fits
-
-This fork focuses on original Xbox couch play with modern controls. The Windows build offers the same three modes and can play a private LAN match with a matching Xbox build. Both games use the upstream PC port's dossier and this fork's LAN code. GE32 public lobbies run on a separate multiplayer system.
-
-Our equipment wheel, precision aim, slide, mantle and jump-pad work began in a Windows extension for Popnoodler's GE32. Windows and Xbox compile their movement and equipment directly from `port/controls/`. You can build and play either version without a GE32 installation or the optional extension. On Windows, launch `ge007.x86_64.exe` for this fork's campaign, split-screen or LAN. Jump pads are available from the equipment wheel, including in couch play.
-
-The optional GE32 extension runs in a separate installation of `GE32.exe` and loads `weapon-wheel.dll`. Its dossier offers **Coop Campaign**, **Online Multiplayer** and **Local Multiplayer**. The extension is available for players who want to try that version independently. [GE32 release](https://popnoodler.itch.io/ge32) · [Extension setup and controls](mods/the-finals/README.md)
 
 ## Modern movement and equipment
 
 The controls take inspiration from modern shooters like *THE FINALS*. Sprint into a slide, mantle a ledge, or use the equipment wheel to throw a grenade or deploy a jump pad.
 
+| <img src="docs/img/icon/windows.svg" width="16" height="16" alt=""> Windows | <img src="docs/img/icon/xbox.svg" width="32" height="20" alt=""> Original Xbox (xemu) |
+| --- | --- |
+| ![Windows equipment wheel showing three guns, three grenades and a jump pad](docs/img/wheel-windows.png) | ![Original Xbox equipment wheel with the same three guns, three grenades and jump pad](docs/img/wheel-xbox.png) |
+| Hold **LB** to open the wheel. | Hold **White** to open the wheel. |
+
+Both players are in Complex with the same pickups. Starting at the lower left and moving clockwise, the guns are the **PP7**, **KF7 Soviet**, and **ZMG**. **Grenades** sit on the right with the remaining count beneath them. The **jump pad** sits at the bottom. Point the right stick at a slot and release the wheel button to equip it.
+
+<img src="docs/img/icon/windows.svg" width="16" height="16" alt=""> **Windows · Placing a jump pad**
+
+![A Windows player holds a jump pad with a green placement preview on the floor ahead](docs/img/jump-pad.jpg)
+
+Aim at level ground. When the preview turns green, press **RT** to place the pad.
+
+## Controls
+
+The Windows and original Xbox development builds show their own controller on the pause watch. The published **builder-1.0** uses the earlier watch artwork.
+
+| <img src="docs/img/icon/windows.svg" width="16" height="16" alt=""> Windows · Xbox Series controller | <img src="docs/img/icon/xbox.svg" width="32" height="20" alt=""> Original Xbox · Controller S |
+| --- | --- |
+| ![Windows pause watch with the Xbox Series controller and its button labels](docs/img/controls-windows.jpg) | ![Original Xbox pause watch with Controller S and its button labels](docs/img/controls-xbox.jpg) |
+
 | Action | Controller input |
 | --- | --- |
+| Move and look | Move with the **left stick** and look with the **right stick**. |
+| Campaign watch | Press **Menu** on Windows or **Start** on original Xbox. |
 | Jump and mantle | Press **A** to jump. Move toward a ledge and press **A** near the lip to climb it. |
 | Crouch and slide | Tap **B** to crouch. Tap **B** while sprinting at speed to slide. Press **A** to jump out of the slide. |
 | Quick slap | Click the **right stick** on Windows or Xbox to strike with Bond’s palm and return to your equipped weapon. |
@@ -60,7 +81,7 @@ The controls take inspiration from modern shooters like *THE FINALS*. Sprint int
 | Equipment wheel | Hold **LB** on Windows or **White** on Xbox. Point the right stick and release to equip. Right selects grenades, down selects the jump pad, and the other slots hold owned guns. Each player controls their own wheel. |
 | Deploy a jump pad | Equip the pad, aim at a valid floor surface and pull **RT**. Either player can use the placed pad. |
 
-In Xbox multiplayer, damaging an opponent reveals their health above them, with a blue row for armor. Another hit refreshes the meter. It holds for 3.25 seconds and fades over 0.20 seconds.
+In Windows and Xbox multiplayer, damaging an opposing player reveals their health above them, with a blue row for armor. Another hit refreshes the meter. It holds for 3.25 seconds and fades over 0.20 seconds.
 
 ## Performance on Windows and original Xbox
 
@@ -78,10 +99,10 @@ Four-player combat was slowest on Egypt and fastest on Stack. Across the 11 four
 
 | Platform and workload | Measured frame rate |
 | --- | --- |
-| Windows, fixed Egypt camera, two game processes on one PC | **60.00 FPS host / 59.99 FPS guest**. Each rate uses the time between 1,437 consecutive render completions over about 24 seconds. |
-| Original Xbox, same Egypt LAN firefight, 480p | **50.00 → 59.13 displayed FPS** with the scheduler fix. Observed repeated refreshes fell from **113 to 8**. The 95th-percentile display interval fell from 33.33 to 16.67 ms. |
-| Original Xbox, heavy two-player Egypt split-screen | **46.29 displayed FPS** across 925 comparable camera steps with the regular vertex writer. Both players turned, fired and threw grenades. |
-| Original Xbox, four-player local combat on all 11 arenas | **34.07 completed FPS** over 322.79 seconds. The slowest arena was Caverns at 24.5 FPS overall and 17.0 FPS during the grenade window. [Per-arena frame times](DOWNSTREAM.md#four-player-frame-times-on-original-xbox) |
+| <img src="docs/img/icon/windows.svg" width="16" height="16" alt=""> Windows, fixed Egypt camera, two game processes on one PC | **60.00 FPS host / 59.99 FPS guest**. Each rate uses the time between 1,437 consecutive render completions over about 24 seconds. |
+| <img src="docs/img/icon/xbox.svg" width="32" height="20" alt=""> Original Xbox, same Egypt LAN firefight, 480p | **50.00 → 59.13 displayed FPS** with the scheduler fix. Observed repeated refreshes fell from **113 to 8**. The 95th-percentile display interval fell from 33.33 to 16.67 ms. |
+| <img src="docs/img/icon/xbox.svg" width="32" height="20" alt=""> Original Xbox, heavy two-player Egypt split-screen | **46.29 displayed FPS** across 925 comparable camera steps with the regular vertex writer. Both players turned, fired and threw grenades. |
+| <img src="docs/img/icon/xbox.svg" width="32" height="20" alt=""> Original Xbox, four-player local combat on all 11 arenas | **34.07 completed FPS** over 322.79 seconds. The slowest arena was Caverns at 24.5 FPS overall and 17.0 FPS during the grenade window. [Per-arena frame times](DOWNSTREAM.md#four-player-frame-times-on-original-xbox) |
 
 Completed FPS counts render completions. Displayed FPS counts distinct frames seen at physical Xbox refreshes. The LAN guest draws one full-screen view. Local split-screen draws each active player's view. To see displayed FPS and recent frame times during play, place an empty `ge-perf-hud.on` file beside the Xbox executable and relaunch. [Performance overlay](DOWNSTREAM.md#performance-overlay) · [Windows replay and measurement instructions](DOWNSTREAM.md) · [Xbox LAN measurements](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7015760434) · [Xbox split-screen measurements](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7016289480)
 
@@ -97,7 +118,7 @@ A physical Xbox joined a Windows host and fired on all eleven retail multiplayer
 - The XboxDev community’s nxdk supplies the original Xbox toolchain, runtime and pbkit graphics library. The Xbox NV2A renderer and presentation fixes were adapted from Perfect Dark X. The Perfect Dark PC port by Ryan Dwyer and contributors provided the software Fast3D renderer lineage and a reference for porting Rare’s engine. [nxdk](https://github.com/XboxDev/nxdk) · [Perfect Dark X](https://github.com/GTTeancum/Perfect-Dark-X) · [Perfect Dark PC port](https://github.com/perfect-dark-pc-port/perfect_dark) · [Third-party notices](NOTICE)
 - The Neverball nxdk port provided a comparison for Xbox push-buffer sizing and VBlank presentation. [Neverball for Xbox](https://github.com/ZacharyLeahan/neverball-nxdk) · [nxdk-gles11](https://github.com/Ryzee119/nxdk-gles11)
 - We tested the Xbox build in [xemu](https://github.com/xemu-project/xemu) with the 1 MiB [OXOS BIOS](https://github.com/kooscode/oxos), version [v0.4.14](https://github.com/kooscode/oxos/releases/tag/v0.4.14). This setup checks boot and frame identity. We measure display timing on the physical Xbox.
-- Popnoodler’s [GE32 Windows release](https://popnoodler.itch.io/ge32) was the original target for this fork’s movement and equipment extension. [The Finals-inspired controls](mods/the-finals/README.md)
+- Popnoodler’s [GE32 Windows release](https://popnoodler.itch.io/ge32) was the original target for this fork’s movement and equipment extension. [Original extension and test records](https://github.com/ZacharyLeahan/goldeneye-nxdk/tree/builder-1.0/mods/the-finals)
 
 For the base port’s campaign, PC settings and release history, see the [upstream README](https://github.com/jkdansereau/goldeneye-pc-port#readme).
 

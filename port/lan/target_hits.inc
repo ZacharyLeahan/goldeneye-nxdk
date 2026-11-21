@@ -31,7 +31,6 @@ static void mpConfirmTargetHit(int attacker, int target)
     hit->previousHealth = p->oldhealth;
 }
 
-#ifdef __XBOX__
 static Gfx *hitCells(Gfx *dl, int x, int y, int step, int height, float fraction)
 {
     for (int i = 0; i < 8; ++i) {
@@ -93,4 +92,3 @@ Gfx *mpDrawTargetHits(Gfx *dl)
     }
     return dl;
 }
-#endif
