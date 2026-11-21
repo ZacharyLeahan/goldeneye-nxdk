@@ -1,5 +1,6 @@
 /* Included by the downstream build adapter inside the native dossier menu. */
 #include "port/lan/lan.h"
+#include "mp_simulants.h"
 #ifdef GE_LAN_HOST
 #include <string.h>
 extern int lanDesktopOpen(const char *guestAddress);
@@ -27,6 +28,7 @@ static void openMultiplayerPage(enum MultiplayerPage page)
 
 static void initMultiplayerPage(void)
 {
+    mpSimulantsSetCount(0, 0);
     lanClose();
     openMultiplayerPage(MULTIPLAYER);
 }
@@ -138,6 +140,25 @@ static void multiplayerMenuTick(void)
     mission_difficulty_highlighted = cursor_v_pos >= 243.0f;
     if (multiplayerPage == MULTIPLAYER && cursor_v_pos >= 275.0f)
         mission_difficulty_highlighted = 2;
+    if (multiplayerPage == MULTIPLAYER && mission_difficulty_highlighted == 2 &&
+        (keys & R_JPAD) && !tab_prev_highlight) {
+        if (joyGetControllerCount() < 2) {
+            modeMessage = "CONNECT A SECOND CONTROLLER\n";
+            return;
+        }
+        lanClose();
+        gamemode = GAMEMODE_MULTI;
+        init_mp_options_for_scenario(2);
+        reset_mp_options_for_scenario(SCENARIO_NORMAL);
+        game_length = LEN_10MIN;
+        for (int i = 1; i < (int)(sizeof(multi_stage_setups) / sizeof(multi_stage_setups[0])); ++i)
+            if (multi_stage_setups[i].stage_id == LEVELID_FACILITY) { MP_stage_selected = i; break; }
+        selected_stage = LEVELID_FACILITY;
+        briefingpage = -1;
+        mpSimulantsSetCount(2, 1);
+        frontChangeMenu(MENU_RUN_STAGE, TRUE);
+        return;
+    }
     if (!confirm) return;
     if (multiplayerPage == MULTIPLAYER) {
         if (mission_difficulty_highlighted == 0) {
@@ -260,6 +281,8 @@ static Gfx *drawMultiplayerPage(Gfx *dl)
             dl = multiplayerLine(dl, 170, y, rows[i]);
         }
     }
+    if (multiplayerPage == MULTIPLAYER && mission_difficulty_highlighted == 2 && !modeMessage)
+        dl = multiplayerLine(dl, 75, 312, "D-PAD RIGHT: FACILITY + 1 SIMULANT\n");
     if (modeMessage || lanActive())
         dl = multiplayerLine(dl, 100, 302, modeMessage ? modeMessage : lanStatus());
     return dl;

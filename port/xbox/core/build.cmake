@@ -3,7 +3,7 @@ find_program(LLVM_LINK llvm-link REQUIRED)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/core")
 set(upstream_build "${GE}/CMakeLists.txt")
-set(adapted_units bondview_r lv bg model spectrum image_bank objecthandler initunk_005450 loadobjectmodel front bondview2 gun propobj chrprop mpmenu)
+set(adapted_units radar chraction bondview_r lv bg model spectrum image_bank objecthandler initunk_005450 loadobjectmodel front bondview2 gun propobj chrprop mpmenu)
 foreach(unit IN LISTS adapted_units)
   list(APPEND original_sources "${GE}/src/game/${unit}.c")
   list(APPEND adapted_sources "${generated}/${unit}.c")
@@ -48,7 +48,8 @@ foreach(unit random n64stubs ucode pc_netorder rzdecomp gimgfixup utils legacycr
     drawdistgameplay watchsettings libultra mixer audio)
   list(APPEND core_units "${GE}/port/src/${unit}.c")
 endforeach()
-add_library(world_ir OBJECT ${game_units} ${core_libs} ${core_units}
+include("${GE}/port/lan/simulants.cmake")
+add_library(world_ir OBJECT ${bot_sources} ${game_units} ${core_libs} ${core_units}
   ${adapted_sources} "${generated}/cart_fixups.c" core/resources.c core/sequence.c)
 target_include_directories(world_ir PRIVATE shim "${GE}" "${GE}/port/include" "${GE}/src" "${GE}/src/game"
   "${GE}/src/libultra" "${GE}/src/libultra/audio" "${SDK}/lib/sdl/SDL2/include")

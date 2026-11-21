@@ -11,6 +11,31 @@ def adapt(unit, source, *, xbox=False):
             raise ValueError(f"Review LAN adapter after change to {unit}: {before}")
         source = source.replace(before, after)
     source = '#include "port/lan/lan.h"\n' + source
+    if unit == "boss":
+        source = '#include "simulant_probe.h"\n' + source
+        replace("lvlStageLoad(g_StageNum);", "lvlStageLoad(g_StageNum);\n        simulantProbeStageReady(g_StageNum);")
+        replace("lvlUnloadStageTextData();", "simulantProbeStageTeardown();\n        lvlUnloadStageTextData();")
+    if unit == "lv":
+        source = '#include "simulant_probe.h"\n' + source
+        replace("g_GlobalTimer += g_ClockTimer;", "g_GlobalTimer += g_ClockTimer;\n    simulantProbePoll();")
+    if unit == "radar":
+        source = '#include "simulant_probe.h"\n#include "mp_roster.h"\n' + source
+        replace("for (i = 0; i < player_count; i++)",
+                "int participants = mpRosterCount() > player_count ? mpRosterCount() : player_count;\n    for (i = 0; i < participants; i++)")
+        replace("if (g_playerPointers[i]->bonddead == FALSE)",
+                "other_player_prop = i >= player_count ? simulantProbeGetProp() : (g_playerPointers[i]->bonddead ? NULL : g_playerPointers[i]->prop);\n            if (other_player_prop)")
+        replace("other_player_prop = g_playerPointers[i]->prop;", "")
+    if unit == "chraction":
+        source = '#include "mp_combat.h"\n' + source
+        anchor = "self->chrflags |= CHRFLAG_WAS_DAMAGED;"
+        site = source.index(anchor, source.index("bool handles_shot_actors("))
+        source = source[:site] + "if (damageToCause > 0) mpCombatNoteSimulantHit(self, isPlayer ? get_cur_playernum() : -1);\n            " + source[site:]
+        anchor = "increment_num_kills_display_text_in_MP();"
+        if source.count(anchor) != 2:
+            raise ValueError("Review Simulant kill attribution in chraction")
+        source = source.replace(anchor, "if (mpCombatShouldCountNativeKill(self)) " + anchor)
+        anchor = "if (chrlvAttackAnimationRelated7F026F30(self, &endframe2))"
+        replace(anchor, "if (mpCombatSimulantKeepsMoving(self)) return TRUE;\n            " + anchor)
     if unit in ("boss", "lv"):
         source = '#include "port/lan/frame_trace.h"\n' + source
     if unit == "boss":
