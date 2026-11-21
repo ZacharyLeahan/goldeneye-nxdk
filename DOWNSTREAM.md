@@ -1,31 +1,6 @@
 # GoldenEye multiplayer fork
 
-This downstream fork keeps the upstream PC-port source and adds the local GE32 extension in [mods/the-finals](mods/the-finals/README.md). The [original Xbox build](#original-xbox) uses the same source checkout.
-
-The native Windows and original Xbox builds share the LAN protocol, multiplayer menu and movement controls from this checkout. The separate GE32 extension targets the 2026.11.07 e8859fe9 Windows release with reversible executable patches. The native builds run independently of GE32.
-
-## Current additions
-
-- Hold LB for an equipment wheel: Jump Pad fixed at the bottom, native grenades fixed on the right, and owned guns above/left. Each local life starts with three grenades; RT throws. Select with the right stick and release to equip; center keeps current equipment and B cancels.
-- Weapon silhouettes, translucent panels, readable labels, an equipped marker, and a selected-slot outline.
-- Thread-safe local-player inventory snapshots and queued game-thread equipment changes.
-- A jumps using native gravity and floor landing, with grounded-only takeoff and ceiling checks. B toggles crouch; A also clears crouch before jumping. Y interacts.
-- Slower controller look: horizontal 65%, vertical 60%, smoothing 3/10. Zoomed centred aim uses full-resolution stick input, time-based smoothing and a finer ADS gain.
-- B backs out of the standard character-selection screen. Online character selection is unchanged.
-
-- Calibrated Medium-style run/sprint pacing, normalized diagonal input, and left-stick-click sprint with contextual cancellation.
-- Sprint then B for a short crouched momentum slide with deceleration, limited steering and A-to-jump cancellation.
-- A larger deployable jump pad with a native-era military-equipment look, matched placement/contact footprint, and immediate launch on contact.
-- Pad flight through physically clear raised room openings, with temporary navigation bridging and real window-sill support.
-- GoldenEye-inspired pixel lettering, green health cells and blue armor indicators, with no copied game assets.
-- Confirmed-hit health bars above targets, with independent timers and a 3.25-second hold plus 0.20-second fade measured from supplied gameplay footage.
-- Right-stick-click quick slap using the native palm animation/strike dispatch, followed by ammunition-safe gun restoration.
-
-Movement and combat additions have local offline coverage; cross-PC synchronization is not yet verified.
-
-See the [extension setup and validation](mods/the-finals/README.md). The original [upstream README](README.md) remains the base-port documentation.
-
-No ROMs, extracted game assets, save files, GE32 binaries, patched executables, DLLs, or compiler distributions are included. Bring your own supported US ROM and obtain GE32 separately from its author. This fork is unofficial and not affiliated with Embark Studios or THE FINALS.
+This fork builds the Windows game and original Xbox game from the upstream PC-port source. Both targets compile the shared controls in `port/controls/` and use the fork's private LAN implementation in `port/lan/`. The three game modes are Solo Campaign, LAN Multiplayer and Local Multiplayer. [Setup, game modes and controller mappings](README.md)
 
 ## Original Xbox
 
@@ -279,7 +254,7 @@ of overlay overhead.
    placement. RT deploys the pad and B stows it. On an invalid surface,
    RT keeps the pad in hand. Either player can walk onto the deployed pad.
 
-Windows and Xbox compile the same movement, aim, wheel and equipment sources from `port/controls/`. Each local player has independent input and equipment state. The optional Windows GE32 extension keeps its executable-specific integration in `mods/the-finals/`.
+Windows and Xbox compile the same movement, aim, wheel and equipment sources from `port/controls/`. Each local player has independent input and equipment state.
 
 In native Xbox and Windows gameplay, click the right stick to slap with Bond’s palm. After the strike, Bond returns to the equipped weapon. Xbox multiplayer shows an eight-cell health meter above an opponent you damage. A new hit refreshes the 3.25-second hold, followed by a 0.20-second fade.
 
@@ -292,7 +267,6 @@ multiplayer character animation. Each player starts with a PP7. The host
 resolves gunfire and sends both players' health, armour, deaths, kills and
 respawns to the client. The host also awards stage pickups and replicates
 their visibility, weapon ownership, reserve rounds and magazines.
-The separate GE32 release uses a different multiplayer implementation.
 
 The Windows host uses LB for the fork equipment wheel. Hold LB, move the
 right stick to an item, then release LB to equip it. B cancels. The Xbox

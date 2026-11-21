@@ -38,14 +38,6 @@ The launcher opens the finished folders after an interactive build.
 
 For command-line use, run `build.cmd windows`, `build.cmd xbox`, or `build.cmd both`. In a source checkout or extracted source archive the same script builds that copy. The standalone download fetches its tagged source into a folder beside the launcher. Keep the resulting game and cartridge files private. [Release notes](https://github.com/ZacharyLeahan/goldeneye-nxdk/releases/tag/builder-1.0) · [Manual Windows build](docs/building.md) · [Manual Xbox build](DOWNSTREAM.md#build-and-boot)
 
-## Where GE32 fits
-
-This fork focuses on original Xbox couch play with modern controls. The Windows build offers the same three modes and can play a private LAN match with a matching Xbox build. Both games use the upstream PC port's dossier and this fork's LAN code. GE32 public lobbies run on a separate multiplayer system.
-
-Our equipment wheel, precision aim, slide, mantle and jump-pad work began in a Windows extension for Popnoodler's GE32. Windows and Xbox compile their movement and equipment directly from `port/controls/`. You can build and play either version without a GE32 installation or the optional extension. On Windows, launch `ge007.x86_64.exe` for this fork's campaign, split-screen or LAN. Jump pads are available from the equipment wheel, including in couch play.
-
-The optional GE32 extension runs in a separate installation of `GE32.exe` and loads `weapon-wheel.dll`. Its dossier offers **Coop Campaign**, **Online Multiplayer** and **Local Multiplayer**. The extension is available for players who want to try that version independently. [GE32 release](https://popnoodler.itch.io/ge32) · [Extension setup and controls](mods/the-finals/README.md)
-
 ## Modern movement and equipment
 
 The controls take inspiration from modern shooters like *THE FINALS*. Sprint into a slide, mantle a ledge, or use the equipment wheel to throw a grenade or deploy a jump pad.
@@ -97,7 +89,7 @@ A physical Xbox joined a Windows host and fired on all eleven retail multiplayer
 - The XboxDev community’s nxdk supplies the original Xbox toolchain, runtime and pbkit graphics library. The Xbox NV2A renderer and presentation fixes were adapted from Perfect Dark X. The Perfect Dark PC port by Ryan Dwyer and contributors provided the software Fast3D renderer lineage and a reference for porting Rare’s engine. [nxdk](https://github.com/XboxDev/nxdk) · [Perfect Dark X](https://github.com/GTTeancum/Perfect-Dark-X) · [Perfect Dark PC port](https://github.com/perfect-dark-pc-port/perfect_dark) · [Third-party notices](NOTICE)
 - The Neverball nxdk port provided a comparison for Xbox push-buffer sizing and VBlank presentation. [Neverball for Xbox](https://github.com/ZacharyLeahan/neverball-nxdk) · [nxdk-gles11](https://github.com/Ryzee119/nxdk-gles11)
 - We tested the Xbox build in [xemu](https://github.com/xemu-project/xemu) with the 1 MiB [OXOS BIOS](https://github.com/kooscode/oxos), version [v0.4.14](https://github.com/kooscode/oxos/releases/tag/v0.4.14). This setup checks boot and frame identity. We measure display timing on the physical Xbox.
-- Popnoodler’s [GE32 Windows release](https://popnoodler.itch.io/ge32) was the original target for this fork’s movement and equipment extension. [The Finals-inspired controls](mods/the-finals/README.md)
+- Popnoodler’s [GE32 Windows release](https://popnoodler.itch.io/ge32) was the original target for this fork’s movement and equipment extension. [Original extension and test records](https://github.com/ZacharyLeahan/goldeneye-nxdk/tree/builder-1.0/mods/the-finals)
 
 For the base port’s campaign, PC settings and release history, see the [upstream README](https://github.com/jkdansereau/goldeneye-pc-port#readme).
 
