@@ -40,7 +40,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rom", type=Path, help="NTSC-U .z64 or ZIP to package beside the XBE")
     parser.add_argument("--build-dir", type=Path, default=REPO / "build-xbox")
+    parser.add_argument("--local-four-test", action="store_true",
+                        help="package a private emulator fixture that boots four-player Complex")
     args = parser.parse_args()
+    if args.local_four_test and not args.rom:
+        parser.error("--local-four-test requires --rom so the fixture can be packaged in an XISO.")
     if not os.environ.get("NXDK_DIR"):
         parser.error("Set NXDK_DIR to a prepared nxdk checkout (see DOWNSTREAM.md).")
     sdk = Path(os.environ["NXDK_DIR"]).absolute()
@@ -69,6 +73,8 @@ def main():
                 (staging / ROM_NAME).write_bytes(data)
                 (staging / "xbox.bin").write_bytes(pack(data))
                 shutil.copyfile(build / "default.xbe", staging / "default.xbe")
+                if args.local_four_test:
+                    (staging / "ge-local-four.on").touch()
                 image = Path(temp) / "ge007.iso"
                 subprocess.run([xiso, "-c", staging.name, image.name], cwd=temp, env=env, check=True)
                 install = build / "disc"

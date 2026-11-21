@@ -64,6 +64,26 @@ static void enterNetworkMatch(void)
     frontChangeMenu(MENU_RUN_STAGE, TRUE);
 }
 
+static void enterLocalMatchSetup(void)
+{
+    s32 players = joyGetControllerCount();
+
+    /* The native options page only initializes its player count when the
+     * previous selection is zero.  LAN always selects two players, so coming
+     * back from LAN (or another two-player setup) could otherwise leave local
+     * play at two even when all four Xbox ports are populated.  Re-seed the
+     * local setup from the connected pads every time this row is entered.
+     * Keep the original game's supported 2-4 player range explicit here. */
+    if (players < 2) players = 2;
+    if (players > MAXCONTROLLERS) players = MAXCONTROLLERS;
+
+    lanClose();
+    gamemode = GAMEMODE_MULTI;
+    init_mp_options_for_scenario(players);
+    sndPlaySfx(g_musicSfxBufferPtr, DOOR_METAL_CLOSE_SFX, 0);
+    frontChangeMenu(MENU_MP_OPTIONS, FALSE);
+}
+
 static void multiplayerMenuTick(void)
 {
     unsigned keys = joyGetButtonsPressedThisFrame(PLAYER_1, ANY_BUTTON);
@@ -130,9 +150,7 @@ static void multiplayerMenuTick(void)
         if (mission_difficulty_highlighted == 1) {
             openMultiplayerPage(LAN_ROLES);
         } else if (joyGetControllerCount() >= 2) {
-            gamemode = GAMEMODE_MULTI;
-            sndPlaySfx(g_musicSfxBufferPtr, DOOR_METAL_CLOSE_SFX, 0);
-            frontChangeMenu(MENU_MP_OPTIONS, FALSE);
+            enterLocalMatchSetup();
         } else {
             modeMessage = "CONNECT A SECOND CONTROLLER\n";
         }

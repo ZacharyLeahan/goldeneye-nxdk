@@ -746,7 +746,10 @@ covers D24–D69; the log continues in §H (D32 procedure, D70–D121).
 | D593 | Retain triangle material across vertex loads in the Egypt LAN view. | MEASURED |
 | D594 | Trace TRI4 at the heavy Egypt LAN camera and measure projected-coordinate reuse. | MEASURED |
 | D595 | Accept a mixed audio/graphics command pair on the early Egypt LAN wake. | FIXED |
-| D596 | Discover joinable LAN hosts before asking for an IP address. | FIXED (Windows transport and physical Xbox join) |
+| D596 | Initialize Xbox local multiplayer from all connected pads and verify four seats. | FIXED (xemu and scored four-controller hardware rounds on all eleven arenas) |
+| D597 | Busy polling the Xbox sequence player stalls simultaneous local deaths. | PARTIAL (cooperative audio wait verified on hardware, sustained split-screen 60 FPS open) |
+| D598 | Distinct scanned framebuffers drive the optional Xbox frame-time overlay. | RESOLVED (overlay visibility and timing compared on hardware) |
+| D599 | Discover joinable LAN hosts before asking for an IP address. | FIXED (Windows transport and physical Xbox join) |
 | D407 | **Tanks cannot be boarded/exited on PC — the v0.4.0 use/reload split (D378/D393) removed the B-button tap the engine's tank handlers in `bondview2.c` consume (user report 2026-09-28, Runway/Streets)** — full `## D407` entry at file tail | **CLOSED (2026-09-28 bookkeeping: tank board/exit accepted by the user; shipped in v0.4.0).** Earlier: PARTIAL (fix landed in v0.4.0, port-only): present `GE_CONT_B` on the use (E / pad A) rising edge only while `g_PlayerIsInTank == 1` or `g_BondCanEnterTank != 0`; E keeps its D378 no-reload-fallback semantics elsewhere, N64 layout unaffected. D407(b) same cycle: front PC Options page-edge highlight clamp + mouse-wheel / W-S paging (wheel queue consumed on the menu, D223); its wheel mapping shipped inverted and was fixed to match W/S (wheel up = step up). D407(c): board-animation lockout, menu-accept B gate in tank states, in-tank aim routed through the legacy velocity stick + `Input.TankAimScale` knob. RESOLVED 2026-09-28: all port-only (src/game zero-diff), 10 TANKDBG probes stripped, release binary verified clean, user live tank drive signed off (board + exit OK, aim feel good). |
 | D408 | **`Game.SkipIntro` skips the post-mission failure dossier: with it on, entering a level then aborting (watch Z+A) or dying (KIA) returns straight to the menus — no REPORT / "Mission status: KILLED IN ACTION / ABORTED" screen** (user report 2026-09-28; save/AllUnlocked ruled out) — full `## D408` entry at file tail | FIXED 2026-09-30 (SkipIntro hook gated to first boot; live dossier check owed). |
 | D415 | **Shooting a light fixture does not "kill" its flickering light (Bunker, Caverns): the fixture takes the hit but the flicker keeps going (community report, issue #87 comment by the reporter, 2026-09-28, 00 Agent playthrough of v0.4.0).** — full `## D415` entry at file tail | FIXED (2026-09-29 bookkeeping: root-caused and fixed as D430 + D431, user-verified vs GEPD/1964 on Caverns 2026-09-29; #119). Earlier: ROOT-CAUSED as D430 (see there); fix in tree, live check owed. |
@@ -18901,7 +18904,52 @@ eight observed candidate repeats occurred in display-list processing or draw
 submission. Egypt LAN uses this wake in normal play. See [the scheduler trace,
 validation and trial limits](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7015760434).
 
-## D596 — Discover joinable LAN hosts before asking for an IP address
+## D596 — Four-player local setup on Xbox (2026-11-19)
+
+The Xbox controller backend and renderer already kept four pad slots and four
+viewports. The local-mode row did not initialize the multiplayer player count,
+however. The native options page only derives that count from connected pads
+when `selected_num_players` is zero, so a previous two-player or LAN setup
+could leave local play at two with four Xbox ports populated.
+
+The Xbox local transition now calls `init_mp_options_for_scenario` with the
+connected-pad count, clamped to the native two-to-four-player range. LAN stays
+exactly two-player. This is a port-layer menu fix; the game logic is unchanged.
+
+The nxdk target linked cleanly and a private XISO built with
+`--local-four-test` booted four-player Complex in xemu 0.8.139. The observed
+framebuffer contained four simultaneous viewports at distinct spawn positions
+with a marker for every player. The opt-in marker supplies idle seats only and
+is absent from normal packages. The subsequent original-Xbox sweep recorded
+four controller ports and three opponent kills on every arena.
+
+## D597 — Original Xbox death-music wait in local multiplayer (2026-11-20)
+
+When several players died on the same game tick in Caverns, each death
+requested the multiplayer death cue through `set_missionstate(6)`.
+`musicTrack2Play` polls `alCSPGetState` before reusing sequence storage.
+On the single-core Xbox, the busy wait competes with the audio worker that
+must process the stop. The generated Xbox music translation unit now waits
+through `xboxWaitForSequenceStop`, yielding between unsuccessful polls.
+It still waits for the stop before loading the next sequence.
+
+With identical four-player grenade inputs on original hardware, the three
+sequence waits totaled 570.57 ms with polling and 58.64 ms with yielding.
+The longest game-thread frame through graphics submission fell from
+579.32 to 67.39 ms. Both runs recorded three opponent kills. The p95
+display interval stayed at 83.33 ms, and the port still misses the 60 FPS
+target during four-player combat. [Hardware measurements](../../DOWNSTREAM.md#four-player-frame-times-on-original-xbox)
+
+## D598 — Displayed frame rate in the Xbox performance overlay (2026-11-20)
+
+The overlay timestamps framebuffer changes at vertical blank. Repeated scans
+of the same image extend its display interval. Drawing a single overlay after
+the final viewport keeps the graph readable in split-screen. Eight alternating
+three-second blocks in four-player Caverns measured 15.70 displayed FPS hidden
+and 15.64 visible. Both conditions had an 83.33 ms p95 interval.
+[Overlay controls and measurements](../../DOWNSTREAM.md#performance-overlay)
+
+## D599 — Discover joinable LAN hosts before asking for an IP address
 
 **FIXED 2026-11-20 (downstream Windows/Xbox LAN layer).** `Join Match` now
 sends a build-specific UDP discovery request and lists compatible hosts by

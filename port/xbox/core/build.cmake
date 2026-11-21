@@ -10,12 +10,13 @@ foreach(unit IN LISTS adapted_units)
 endforeach()
 list(APPEND adapted_sources "${generated}/boss.c")
 set(pbkit_source "${SDK}/lib/pbkit/pbkit.c")
-set(core_inputs "${pbkit_source}" "${CMAKE_CURRENT_LIST_DIR}/prepare.py" ${original_sources}
+set(ohci_source "${SDK}/lib/usb/libusbohci/src_core/ohci.c")
+set(core_inputs "${pbkit_source}" "${ohci_source}" "${CMAKE_CURRENT_LIST_DIR}/prepare.py" "${GE}/src/music.c" ${original_sources}
   "${GE}/src/boss.c" "${GE}/port/lan/mode_menu.py" "${GE}/port/lan/adapt.py" "${GE}/port/lan/tests/egypt_camera.py" "${GE}/src/game/objecthandler.h"
   "${GE}/port/src/romdata.c" "${GE}/port/src/romassets_u.s"
   "${GE}/assets/animationtable_data.h" "${upstream_build}" "${GE}/port/fast3d/gfx_pc.cpp")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${core_inputs})
-execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/prepare.py" "${generated}" "${pbkit_source}"
+execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/prepare.py" "${generated}" "${pbkit_source}" "${ohci_source}"
   COMMAND_ERROR_IS_FATAL ANY)
 file(READ "${upstream_build}" source_manifest)
 string(REGEX REPLACE "#[^\n]*" "" source_manifest "${source_manifest}")
@@ -34,6 +35,8 @@ set(GE_SCHED_ROOT "${GE}")
 include("${GE}/port/lan/scheduler.cmake")
 list(REMOVE_ITEM core_units "${scheduler_source}")
 list(APPEND core_units "${port_scheduler}")
+list(REMOVE_ITEM core_units "${GE}/src/music.c")
+list(APPEND core_units "${generated}/music.c")
 file(GLOB_RECURSE game_units CONFIGURE_DEPENDS "${GE}/src/game/*.c")
 list(REMOVE_ITEM game_units ${original_sources}
   "${GE}/src/game/zlib.c" "${GE}/src/game/decompress.c")
@@ -62,7 +65,7 @@ set_source_files_properties("${GE}/src/game/math_asinacos.c" "${GE}/src/game/mat
 # typed vertex allocator directly on the Xbox calling convention.
 set_source_files_properties("${GE}/src/game/initweaponanigroups.c" PROPERTIES
   COMPILE_DEFINITIONS "get_ptr_allocated_block_for_vertices=dynAllocateVertices")
-set(exports "mainproc,mainThread,portKernelInit,osCreateThread,osStartThread,g_VtxBuffers,mixerInit,audioInit,getPlayerCount,xboxMountResources,xboxProfileGame")
+set(exports "mainproc,mainThread,portKernelInit,osCreateThread,osStartThread,g_VtxBuffers,mixerInit,audioInit,getPlayerCount,xboxMountResources,xboxProfileGame,xboxProfileKills")
 set(world_obj "${generated}/world.obj")
 file(GENERATE OUTPUT "${generated}/ir-objects.txt"
   CONTENT "$<JOIN:$<TARGET_OBJECTS:world_ir>,\n>\n")
@@ -77,6 +80,10 @@ target_compile_definitions(xbox_present PRIVATE GE_PBKIT_TRACE=1)
 add_executable(world $<TARGET_OBJECTS:xbox_present> main.cpp "${GE}/port/lan/lan.c" "${GE}/port/lan/frame_trace.c" core/settings.c controllers.c "${GE}/port/controls/finals_controls.cpp" "${generated}/cart_symbols.c"
   "${world_obj}" nv2a/gfx_nv2a.cpp "${generated}/gfx_pc.cpp" "${GE}/port/fast3d/gfx_cc.cpp")
 target_compile_features(world PRIVATE cxx_std_20)
+target_sources(world PRIVATE "${generated}/ohci_retry.c" perf_hud.cpp)
+set_source_files_properties("${generated}/ohci_retry.c" PROPERTIES
+  INCLUDE_DIRECTORIES "${SDK}/lib/usb/libusbohci/inc;${SDK}/lib/usb/libusbohci_xbox"
+  COMPILE_DEFINITIONS "USBH_USE_EXTERNAL_CONFIG=\"usbh_config_xbox.h\"")
 target_include_directories(world PRIVATE shim "${GE}" "${GE}/port/include" "${GE}/port/fast3d"
   "${GE}/port/xbox" "${SDK}/lib/sdl/SDL2/include")
 target_compile_definitions(world PRIVATE ${region_flags} AVOID_UB=1 PAL=0 PORT=1 _LANGUAGE_C=1

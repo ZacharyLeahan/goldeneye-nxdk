@@ -23,6 +23,31 @@ def adapt(source, before, after):
     return source.replace(before, after)
 
 
+music = (repo / "src/music.c").read_text()
+for track in range(1, 4):
+    player = f"g_musicXTrack{track}SeqPlayer"
+    anchor = f"while (alCSPGetState({player}))\n        ;"
+    music = adapt(music, anchor, f"xboxWaitForSequenceStop({player});")
+music = adapt(music, "void musicTrack1Play(s32 track)", "extern void xboxWaitForSequenceStop(ALCSPlayer *);\n\nvoid musicTrack1Play(s32 track)")
+emit("music.c", music)
+
+
+# A port can already be connected on title launch with no pending change
+# bit. A failed enumeration also clears that bit. Retry connected ports
+# without registered devices; a working controller must never be reset.
+ohci = Path(sys.argv[3]).read_text()
+poll = "if ((_ohci->HcRhPortStatus[i] & USBH_HcRhPortStatus_CSC_Msk) == 0)\n            continue;"
+ohci = adapt(ohci, poll, """static uint32_t last_probe[OHCI_PORT_CNT];
+        uint32_t status = _ohci->HcRhPortStatus[i];
+        if (!(status & USBH_HcRhPortStatus_CSC_Msk)) {
+            if (!(status & USBH_HcRhPortStatus_CCS_Msk) ||
+                get_ticks() - last_probe[i] < 100 || ohci_find_device_by_port(i+1))
+                continue;
+        }
+        last_probe[i] = get_ticks();""")
+emit("ohci_retry.c", ohci)
+
+
 # Perfect Dark X's queue-retirement fix, applied to the configured SDK copy.
 # The GPU DPC can observe a VBlank before the ISR selects the pending surface.
 pbkit = Path(sys.argv[2]).read_text()
@@ -48,7 +73,7 @@ void xboxAcquireBackBuffer(void)
     }
 }
 """
-pbkit = '#include "port/lan/frame_trace.h"\nstatic unsigned ftSurfaceFrames[3];\n' + pbkit
+pbkit = '#include "port/lan/frame_trace.h"\n#include "port/xbox/perf_hud.h"\nstatic unsigned ftSurfaceFrames[3];\n' + pbkit
 pbkit = adapt(pbkit, "    //insert in push buffer the commands to trigger screen swapping at next VBlank",
               """    if (ftRecording()) {
         __atomic_store_n(&ftSurfaceFrames[pb_back_index], ftRenderId, __ATOMIC_RELEASE);
@@ -60,6 +85,8 @@ pbkit = adapt(pbkit, "            pb_BackBufferbReady[next]=1;",
             pb_BackBufferbReady[next]=1;""")
 pbkit = adapt(pbkit, "if (pb_BackBufferbReady[pb_BackBufferNxtVBL]==1) VIDEOREG(PCRTC_START)=pb_FBAddr[pb_BackBufferIndex[pb_BackBufferNxtVBL]]&0x03FFFFFF;",
               """if (pb_BackBufferbReady[pb_BackBufferNxtVBL]==1) VIDEOREG(PCRTC_START)=pb_FBAddr[pb_BackBufferIndex[pb_BackBufferNxtVBL]]&0x03FFFFFF;
+        unsigned hudEpoch = __atomic_load_n(&xboxHudScanEpoch, __ATOMIC_ACQUIRE);
+        if (hudEpoch) xboxHudScanout(hudEpoch, VIDEOREG(PCRTC_START) & 0x03ffffffu);
         if (ftRecording()) {
             unsigned showing = VIDEOREG(PCRTC_START) & 0x03ffffffu;
             unsigned i = 0;
@@ -108,7 +135,10 @@ from adapt import adapt as adapt_lan
 from mode_menu import generate as multiplayer_menu
 sys.path.insert(0, str(repo / "port/lan/tests"))
 from egypt_camera import generate as egypt_camera
-emit("bondview_r.c", egypt_camera((repo / "src/game/bondview_r.c").read_text()))
+spawn = egypt_camera((repo / "src/game/bondview_r.c").read_text())
+spawn_choice = "rand_pad_index = bondviewGetRandomSpawnPadIndex();"
+emit("bondview_r.c", adapt(spawn, spawn_choice, spawn_choice +
+     "\n            extern int xboxCloseSpawnTest(void);\n            if (xboxCloseSpawnTest()) rand_pad_index = 0;"))
 emit("boss.c", adapt_lan("boss", (repo / "src/boss.c").read_text(), xbox=True))
 
 for unit in ("lv", "bg", "model", "spectrum", "image_bank", "objecthandler", "initunk_005450", "loadobjectmodel", "front", "bondview2", "gun", "propobj", "chrprop", "mpmenu"):
@@ -135,7 +165,9 @@ for unit in ("lv", "bg", "model", "spectrum", "image_bank", "objecthandler", "in
                     "if (traversal->mantle.active) move_offset.x = move_offset.z = 0;\n        "
                     "start_collision_pos_x = g_CurrentPlayer->field_488.collision_position.f[0];")
     if unit == "front":
-        # Keep the Xbox multiplayer arena defaults and native seat limits.
+        # The Xbox local arena menu supports four physical controllers.
+        for level, limit in (("BUNKER2", 3), ("ARCHIVES", 3), ("CAVERNS", 3), ("EGYPT", 2)):
+            src = adapt(src, f"SP_LEVEL_{level}, 1, {limit}}}", f"SP_LEVEL_{level}, 1, 4}}")
         default = "MP_stage_selected = MP_STAGE_TEMPLE;"
         if src.count(default) != 3:
             raise ValueError("Review upstream multiplayer default and fallback arenas")
