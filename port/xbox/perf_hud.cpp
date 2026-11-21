@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
-#include "finals_font.inc"
+#include "port/controls/finals_font.inc"
 
 extern "C" bool xboxDrawPerfTile(int left, int top, int width, int height, const uint32_t *pixels);
 bool xboxHudConfigured;

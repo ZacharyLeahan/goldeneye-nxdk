@@ -58,10 +58,19 @@ static void lanApplyPickups(const LanPose *state)
     }
 }
 
+static QuickSlap *lanActiveSlap(struct player *p)
+{
+    for (int slot = 0; slot < 2; ++slot)
+        if (xboxLives[slot].owner == p && xboxLives[slot].slap.phase)
+            return &xboxLives[slot].slap;
+    return NULL;
+}
+
 static void lanReadInventory(struct player *p, LanInventory *inv)
 {
     _Static_assert(sizeof(p->ammoheldarr) == sizeof(inv->reserve), "reserve ammo layout");
     _Static_assert(ITEM_TANKSHELLS < LAN_WEAPON_WORDS * 32, "multiplayer weapon IDs");
+    QuickSlap *slap = lanActiveSlap(p);
     inv->ready = 1;
     InvItem *first = p->ptr_inventory_first_in_cycle;
     if (first) {
@@ -83,15 +92,16 @@ static void lanReadInventory(struct player *p, LanInventory *inv)
     for (int i = 0; i < LAN_AMMO_TYPES; ++i)
         inv->reserve[i] = p->ammoheldarr[i] > 0 ? p->ammoheldarr[i] : 0;
     for (int hand = 0; hand < 2; ++hand) {
-        int id = p->hands[hand].weaponnum;
+        int id = slap ? slap->weapon[hand] : p->hands[hand].weaponnum;
         inv->weapon[hand] = id >= 0 ? id : 255;
-        int mag = p->hands[hand].weapon_ammo_in_magazine;
+        int mag = slap ? slap->magazine[hand] : p->hands[hand].weapon_ammo_in_magazine;
         inv->magazine[hand] = mag > 0 ? mag : 0;
     }
 }
 
 static void lanApplyInventory(struct player *p, const LanInventory *inv)
 {
+    QuickSlap *slap = lanActiveSlap(p);
     LanInventory local = {0};
     lanReadInventory(p, &local);
     for (int id = ITEM_KNIFE; id <= ITEM_TANKSHELLS; ++id) {
@@ -104,7 +114,9 @@ static void lanApplyInventory(struct player *p, const LanInventory *inv)
     }
     for (int i = 0; i < LAN_AMMO_TYPES; ++i) p->ammoheldarr[i] = inv->reserve[i];
     for (int hand = 0; hand < 2; ++hand) {
-        if ((unsigned)p->hands[hand].weaponnum == inv->weapon[hand])
+        if (slap && (unsigned)slap->weapon[hand] == inv->weapon[hand])
+            slap->magazine[hand] = inv->magazine[hand];
+        else if (!slap && (unsigned)p->hands[hand].weaponnum == inv->weapon[hand])
             p->hands[hand].weapon_ammo_in_magazine = inv->magazine[hand];
     }
 }

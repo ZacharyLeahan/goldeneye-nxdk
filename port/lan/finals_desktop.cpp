@@ -6,7 +6,7 @@
 #include "optionsoverlay.h"
 #include "port/fast3d/gfx_api.h"
 #include "port/fast3d/glad/glad.h"
-#include "port/xbox/finals_controls.h"
+#include "port/controls/finals_controls.h"
 
 // A key can go down and up between game ticks. Keep short direction taps
 // visible to the simulation while held keys continue using SDL's live state.

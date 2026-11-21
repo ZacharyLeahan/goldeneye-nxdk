@@ -749,6 +749,7 @@ covers D24–D69; the log continues in §H (D32 procedure, D70–D121).
 | D596 | Initialize Xbox local multiplayer from all connected pads and verify four seats. | FIXED (xemu and scored four-controller hardware rounds on all eleven arenas) |
 | D597 | Busy polling the Xbox sequence player stalls simultaneous local deaths. | PARTIAL (cooperative audio wait verified on hardware, sustained split-screen 60 FPS open) |
 | D598 | Distinct scanned framebuffers drive the optional Xbox frame-time overlay. | RESOLVED (overlay visibility and timing compared on hardware) |
+| D599 | Discover joinable LAN hosts before asking for an IP address. | FIXED (Windows transport and physical Xbox join) |
 | D407 | **Tanks cannot be boarded/exited on PC — the v0.4.0 use/reload split (D378/D393) removed the B-button tap the engine's tank handlers in `bondview2.c` consume (user report 2026-09-28, Runway/Streets)** — full `## D407` entry at file tail | **CLOSED (2026-09-28 bookkeeping: tank board/exit accepted by the user; shipped in v0.4.0).** Earlier: PARTIAL (fix landed in v0.4.0, port-only): present `GE_CONT_B` on the use (E / pad A) rising edge only while `g_PlayerIsInTank == 1` or `g_BondCanEnterTank != 0`; E keeps its D378 no-reload-fallback semantics elsewhere, N64 layout unaffected. D407(b) same cycle: front PC Options page-edge highlight clamp + mouse-wheel / W-S paging (wheel queue consumed on the menu, D223); its wheel mapping shipped inverted and was fixed to match W/S (wheel up = step up). D407(c): board-animation lockout, menu-accept B gate in tank states, in-tank aim routed through the legacy velocity stick + `Input.TankAimScale` knob. RESOLVED 2026-09-28: all port-only (src/game zero-diff), 10 TANKDBG probes stripped, release binary verified clean, user live tank drive signed off (board + exit OK, aim feel good). |
 | D408 | **`Game.SkipIntro` skips the post-mission failure dossier: with it on, entering a level then aborting (watch Z+A) or dying (KIA) returns straight to the menus — no REPORT / "Mission status: KILLED IN ACTION / ABORTED" screen** (user report 2026-09-28; save/AllUnlocked ruled out) — full `## D408` entry at file tail | FIXED 2026-09-30 (SkipIntro hook gated to first boot; live dossier check owed). |
 | D415 | **Shooting a light fixture does not "kill" its flickering light (Bunker, Caverns): the fixture takes the hit but the flicker keeps going (community report, issue #87 comment by the reporter, 2026-09-28, 00 Agent playthrough of v0.4.0).** — full `## D415` entry at file tail | FIXED (2026-09-29 bookkeeping: root-caused and fixed as D430 + D431, user-verified vs GEPD/1964 on Caverns 2026-09-29; #119). Earlier: ROOT-CAUSED as D430 (see there); fix in tree, live check owed. |
@@ -18947,3 +18948,21 @@ the final viewport keeps the graph readable in split-screen. Eight alternating
 three-second blocks in four-player Caverns measured 15.70 displayed FPS hidden
 and 15.64 visible. Both conditions had an 83.33 ms p95 interval.
 [Overlay controls and measurements](../../DOWNSTREAM.md#performance-overlay)
+
+## D599 — Discover joinable LAN hosts before asking for an IP address
+
+**FIXED 2026-11-20 (downstream Windows/Xbox LAN layer).** `Join Match` now
+sends a build-specific UDP discovery request and lists compatible hosts by
+match name, arena, occupancy and endpoint. Hosts reply only while waiting for
+a player. Results are deduplicated by host nonce and endpoint, Refresh clears
+the list before probing again, and entries expire after ten seconds. Direct IP
+entry remains available from the empty state and the results page.
+
+Windows uses multicast and broadcast discovery. The original Xbox also sends
+the request directly across its local `/24`, because the tested router did not
+bridge limited or directed broadcasts between the wired console and Wi-Fi.
+This scan is 254 packets of 36 bytes at most once every two seconds while the
+join list is open. The transport test passed discovery metadata, selection,
+join, refresh, deduplication and expiry. A physical original Xbox discovered a
+Windows host and entered Complex without IP entry. Two simultaneous physical
+hosts remain an acceptance-test item for issue #23.

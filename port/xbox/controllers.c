@@ -5,7 +5,7 @@
 #include "controllers.h"
 #include "port/lan/lan.h"
 #include "port/lan/frame_trace.h"
-#include "finals_controls.h"
+#include "../controls/finals_controls.h"
 
 static FinalsPad finalsPads[MAXCONTROLLERS];
 static SDL_SpinLock finalsLock;

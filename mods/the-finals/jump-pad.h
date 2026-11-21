@@ -1,7 +1,5 @@
 /* Deployable jump pad. All world/physics state belongs to the simulation thread. */
-#define PAD_ITEM 128
-#define PAD_RADIUS 78.f
-#define PAD_IMPULSE 26.f
+#include "../../port/controls/finals_constants.h"
 static volatile LONG padCarrying,padPlaceRequest,padTriggerBlock,padCancelRequest;
 static int padRTHeld,portalClampInstalled,portalClampSkips;
 static struct {void*owner;int timer;JumpVec position;} portalStep;

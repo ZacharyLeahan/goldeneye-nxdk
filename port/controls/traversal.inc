@@ -61,7 +61,7 @@ static void mantleAbort(void)
 static int nearbyRooms[MAXROOMCOUNT];
 static int nearbyCount, occupiedRooms[64];
 static float rayScale;
-#include "port/xbox/core/traversal_mesh.inc"
+#include "traversal_mesh.inc"
 typedef struct {
     coord3d lo, hi;
     int actor;

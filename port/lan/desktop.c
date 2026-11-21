@@ -123,7 +123,7 @@ int lanDesktopWait(void)
             if (!lines || SDL_strcmp(current, addresses)) {
                 SDL_strlcpy(addresses, current, sizeof(addresses));
                 SDL_snprintf(message, sizeof(message), "%s\r\n%s",
-                             !lanIsHost() ? "Joining Windows host" :
+                             !lanIsHost() ? "Joining LAN host" :
                              addresses[0] ? "Enter this address on the joining device" : "Waiting for a LAN address",
                              addresses[0] ? addresses : "Connect this PC to Ethernet or Wi-Fi.");
                 if (label) SetWindowTextA(label, message);

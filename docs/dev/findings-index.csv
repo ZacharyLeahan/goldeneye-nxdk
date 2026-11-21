@@ -341,6 +341,7 @@ D595,FIXED,Accept a mixed audio/graphics command pair on the early Egypt LAN wak
 D596,FIXED,Initialize Xbox local multiplayer from all connected pads and verify four seats.,FIXED (xemu and scored four-controller hardware rounds on all eleven arenas)
 D597,PARTIAL,Busy polling the Xbox sequence player stalls simultaneous local deaths.,"PARTIAL (cooperative audio wait verified on hardware, sustained split-screen 60 FPS open)"
 D598,RESOLVED,Distinct scanned framebuffers drive the optional Xbox frame-time overlay.,RESOLVED (overlay visibility and timing compared on hardware)
+D599,FIXED,Discover joinable LAN hosts before asking for an IP address.,FIXED (Windows transport and physical Xbox join)
 D407,CLOSED,Tanks cannot be boarded/exited on PC —,CLOSED (2026-09-28 bookkeeping:
 D408,FIXED,Game.SkipIntro skips the post-mission failure dossier:,FIXED 2026-09-30 (SkipIntro hook gated to first boot; live dossier check owed).
 D415,FIXED,"Shooting a light fixture does not ""kill"" its flickering light (Bunker, Caverns):",FIXED (2026-09-29 bookkeeping:

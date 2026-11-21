@@ -1,5 +1,5 @@
-// Host regression test. Compile with the generated finals headers and SDL2.
-#include "../finals_controls.cpp"
+// Host regression test. Compile with SDL2.
+#include "../../controls/finals_controls.cpp"
 #include <cassert>
 
 #ifdef main

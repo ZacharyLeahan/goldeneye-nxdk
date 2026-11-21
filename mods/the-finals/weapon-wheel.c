@@ -129,9 +129,9 @@ static int installGameHook(void){
  unsigned char jump[]={0x48,0xb8,0,0,0,0,0,0,0,0,0xff,0xe0};*(uintptr_t*)(jump+2)=(uintptr_t)gameTickHook;
  VirtualProtect(target,12,PAGE_EXECUTE_READWRITE,&prot);memcpy(target,jump,12);VirtualProtect(target,12,prot,&prot);FlushInstructionCache(GetCurrentProcess(),target,12);return 1;
 }
-static const char *names[]={"Unarmed","Fist","Knife","Throwing knife","PP7","PP7 silenced","DD44 Dostovei","Klobb","KF7 Soviet","ZMG","D5K Deutsche","D5K silenced","Phantom","AR33","RC-P90","Shotgun","Automatic shotgun","Sniper rifle","Cougar Magnum","Golden Gun","Silver PP7","Gold PP7","Moonraker Laser","Watch Laser","Grenade Launcher","Rocket Launcher","Grenades"};
-static const char*itemName(int id){return id==PAD_ITEM?"Jump Pad":id>=0&&id<=GRENADE_ITEM?names[id]:"Equipment";}
-#include "wheel-layout.h"
+#include "../../port/controls/finals_items.inc"
+#define WHEEL_METHOD static
+#include "../../port/controls/wheel_layout.inc"
 static void inventory(void){InventorySnapshot s=snapshotRead();count=s.count;memcpy(ids,s.ids,sizeof(ids));}
 static unsigned char buttonHook(void *p,int b){
  if(getenv("GE32_LEVEL_SWEEP")||getenv("GE32_CHARACTER_TEST")||getenv("GE32_MANTLE_TEST"))return 0;
@@ -158,33 +158,11 @@ static short axisHook(void*p,int a){
 #include "retro-ui.h"
 #include "jump-pad-render.h"
 #include "health-bars-render.h"
-static void wheelUpdate(int lb,int back,float x,float y){
- if(!playing()){openWheel=0;previousLB=lb;cancelled=0;return;}
- if(lb&&!previousLB){
-  inventory();oldCurrent=current();choice=-1;
-  for(int i=0;i<count;i++)if(ids[i]==oldCurrent)choice=i;
-  openWheel=1;cancelled=0;wheelStickEngaged=0;
+static void wheelOpened(void){
   if(logfile){fprintf(logfile,"wheel local=%d context=%d owned=%d current=%d\n",snapshotRead().local,-1,count,oldCurrent);fflush(logfile);}
- }
- if(openWheel){
-  if(x*x+y*y>.16f*.16f)wheelStickEngaged=1;
-  if(back){cancelled=1;openWheel=0;}
-  else if(x*x+y*y<.22f*.22f&&wheelStickEngaged)choice=-1;
-  else if(x*x+y*y>.28f*.28f&&count){
-   wheelStickEngaged=1;
-   float angle=atan2f(y,x);int target=wheelTarget(angle);
-   if(target<0)choice=-1;
-   else if(target!=choice){float start,end;wheelBounds(target,&start,&end);float wrapped=angle;while(wrapped<start)wrapped+=6.28318530718f;while(wrapped>start+6.28318530718f)wrapped-=6.28318530718f;
-    if(choice<0||(wrapped>start+.06f&&wrapped<end-.06f))choice=target;
-   }
-  }
- }
- if(!lb&&previousLB){
-  if(openWheel&&!cancelled&&choice>=0&&choice<count&&available(ids[choice])&&wheelStickEngaged&&ids[choice]!=current())equip(ids[choice]);
-  openWheel=0;cancelled=0;
- }
- previousLB=lb;
 }
+#include "../../port/controls/finals_selection.inc"
+#undef WHEEL_METHOD
 static void testAssert(int value,const char*message){if(!value){if(logfile){fprintf(logfile,"FAIL: %s\n",message);fflush(logfile);}ExitProcess(2);}}
 static void padTestCapture(void*w,const char*name){
  int width,height;getSize(w,&width,&height);if(width<1||height<1||width>8192||height>8192)return;

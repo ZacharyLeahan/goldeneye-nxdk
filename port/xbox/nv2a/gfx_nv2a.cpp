@@ -1,4 +1,4 @@
-#include "../finals_controls.h"
+#include "../../controls/finals_controls.h"
 #include "render_profile.h"
 #include "../perf_hud.h"
 #include "port/lan/frame_trace.h"

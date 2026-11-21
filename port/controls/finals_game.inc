@@ -1,5 +1,5 @@
 /* Simulation-thread bindings for the downstream controller extension. */
-#include "port/xbox/finals_controls.h"
+#include "finals_controls.h"
 #include "port/lan/lan.h"
 #include "finals_constants.h"
 #include "stan.h"
@@ -16,6 +16,13 @@ extern void bgBuildRoomVtxBounds(s32);
 extern s32 bgCheckIfRoomModelNeedsLoad(s32);
 
 typedef struct {
+    enum { SLAP_READY, SLAP_DRAW, SLAP_STRIKE } phase;
+    ITEM_IDS weapon[2], previous[2], fistModel;
+    int magazine[2], started;
+} QuickSlap;
+
+typedef struct {
+    QuickSlap slap;
     struct player *owner;
     int timer, loaded, jump, carrying, placed, sprint, wheelOpen, validPreview, blockFire;
     unsigned previous;
@@ -24,6 +31,68 @@ typedef struct {
 } XboxLife;
 static XboxLife xboxLives[MAXCONTROLLERS];
 static uint32_t lanButtons, lanTriggerPress, lanConsumedTrigger;
+
+static uint32_t lanSlapPress, lanConsumedSlap;
+
+static void slapEquip(int index, ITEM_IDS weapon)
+{
+    struct hand *hand = &g_CurrentPlayer->hands[index];
+    // Fist can represent either a palm or the sniper butt. Reload its model
+    // even when both the old and the new logical weapon are ITEM_FIST.
+    if (weapon == ITEM_FIST && g_CurrentPlayer->hand_item[index] == ITEM_FIST)
+        g_CurrentPlayer->hand_item[index] = ITEM_UNARMED;
+    currentPlayerUnEquipWeaponWrapper(index, weapon);
+    hand->weapon_action_state = GUN_ANIM_STATE_IDLE;
+    hand->weapon_current_animation = 0;
+    hand->weapon_animation_trigger = 0;
+    hand->field_88C = hand->field_890 = 0;
+    hand->weapon_firing_status = 0;
+}
+
+static int quickSlapTick(QuickSlap *slap, int request)
+{
+    struct player *p = g_CurrentPlayer;
+    struct hand *right = &p->hands[GUNRIGHT];
+    if (slap->phase == SLAP_READY) {
+        if (!request || right->weaponnum < ITEM_FIST || right->weaponnum > ITEM_TANKSHELLS)
+            return 0;
+        for (int h = 0; h < 2; ++h) {
+            struct hand *hand = &p->hands[h];
+            if (hand->weaponnum_watchmenu >= 0 || hand->weapon_current_animation ||
+                hand->weapon_action_state >= GUN_ANIM_STATE_SWITCH_LOWER)
+                return 0;
+        }
+        slap->started = g_GlobalTimer;
+        slap->fistModel = p->cur_item_weapon_getname;
+        p->cur_item_weapon_getname = ITEM_FIST;
+        for (int h = 0; h < 2; ++h) {
+            struct hand *hand = &p->hands[h];
+            slap->weapon[h] = hand->weaponnum;
+            slap->previous[h] = hand->previous_weapon;
+            slap->magazine[h] = hand->weapon_ammo_in_magazine;
+            // Keep the loaded rounds with the holstered weapon during the swap.
+            hand->weapon_ammo_in_magazine = 0;
+            slapEquip(h, h == GUNRIGHT ? ITEM_FIST : ITEM_UNARMED);
+        }
+        slap->phase = SLAP_DRAW;
+    }
+    if ((slap->phase == SLAP_STRIKE && right->weapon_action_state == GUN_ANIM_STATE_IDLE) ||
+        g_GlobalTimer - slap->started > 120) {
+        p->cur_item_weapon_getname = slap->fistModel;
+        for (int h = 0; h < 2; ++h) {
+            slapEquip(h, slap->weapon[h]);
+            p->hands[h].previous_weapon = slap->previous[h];
+            p->hands[h].weapon_ammo_in_magazine = slap->magazine[h];
+        }
+        slap->phase = SLAP_READY;
+    } else if (slap->phase == SLAP_DRAW && p->hand_item[GUNRIGHT] == ITEM_FIST &&
+               p->hand_invisible[GUNRIGHT] >= 0) {
+        right->weapon_action_state = GUN_ANIM_STATE_PUNCH1_STRIKE;
+        right->field_88C = right->field_890 = 0;
+        slap->phase = SLAP_STRIKE;
+    }
+    return 1;
+}
 
 static int xboxGrounded(void)
 {
@@ -38,7 +107,7 @@ static int xboxGrounded(void)
 }
 
 #include <float.h>
-#include "port/xbox/core/traversal.inc"
+#include "traversal.inc"
 
 static float xboxCeiling(float rise)
 {
@@ -132,6 +201,7 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
     if (!remoteSeat && scripted[slot]) {
         pad = (FinalsPad){0};
         if (buttons & Z_TRIG) pad.buttons |= FIN_FIRE;
+        if (buttons & L_CBUTTONS) pad.buttons |= FIN_SLAP; /* scripted right-stick click */
         if (buttons & A_BUTTON) pad.buttons |= FIN_A;
         if (buttons & B_BUTTON) pad.buttons |= FIN_B;
         if (buttons & R_TRIG) pad.buttons |= FIN_AIM;
@@ -142,8 +212,13 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
     }
 #endif
     LanPose peerInput = {0};
+    int remoteSlap = 0;
     if (remoteSeat) {
         lanRemote(&peerInput);
+        if (peerInput.life && peerInput.slapPress != lanConsumedSlap) {
+            lanConsumedSlap = peerInput.slapPress;
+            remoteSlap = 1;
+        }
         pad.buttons = peerInput.buttons & (FIN_FIRE | FIN_AIM | FIN_X);
         if (peerInput.life && peerInput.triggerPress != lanConsumedTrigger) {
             lanConsumedTrigger = peerInput.triggerPress;
@@ -151,6 +226,7 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
         }
     }
     if (life->owner != p || traversal->mantle.stage!=lvlGetCurrentStageToLoad() || g_GlobalTimer < life->timer || p->bonddead) {
+        remoteSlap = 0;
         memset(life,0,sizeof(*life));
         memset(traversal,0,sizeof(*traversal));
         traversal->life=life;
@@ -188,7 +264,7 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
         p->ammoheldarr[get_ammo_type_for_weapon(ITEM_GRENADE)] = 3;
         life->loaded=1;
     }
-    if (slot == 1 && lanActive() && peerInput.life && peerInput.weapon >= ITEM_KNIFE &&
+    if (!life->slap.phase && remoteSeat && peerInput.life && peerInput.weapon >= ITEM_KNIFE &&
         peerInput.weapon <= ITEM_TANKSHELLS && bondinvItemAvailable(peerInput.weapon) &&
         get_item_in_hand_or_watch_menu(GUNRIGHT) != peerInput.weapon) {
         gunRequestHandWeaponChange(GUNRIGHT, peerInput.weapon, 1);
@@ -203,6 +279,7 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
     inventory.validPlacement=life->validPreview;
     inventory.left=getPlayer_c_screenleft()/viGetX(); inventory.top=getPlayer_c_screentop()/viGetY();
     inventory.width=getPlayer_c_screenwidth()/viGetX(); inventory.height=getPlayer_c_screenheight()/viGetY();
+    if (life->slap.phase) pad.buttons &= ~FIN_WHEEL;
     int equipment;
     int selecting=xboxFinalsWheel(slot,1,&pad,&inventory,&equipment);
 #if defined(_WIN32) && !defined(__XBOX__)
@@ -237,10 +314,16 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
         }
     }
     int wheelInput=selecting || ((previous|pad.buttons)&FIN_WHEEL);
+    int requestSlap = !wheelInput && !traversal->mantle.active &&
+                      (remoteSeat ? remoteSlap : (pressed & FIN_SLAP) != 0);
+    int startingSlap = !life->slap.phase;
+    int slapping = quickSlapTick(&life->slap, requestSlap);
+    if (slapping && startingSlap && slot == 0 && lanActive()) ++lanSlapPress;
+    if (slapping && (pad.buttons & FIN_FIRE)) life->blockFire = 1;
     if (life->carrying) life->validPreview=xboxPadPreview(&life->preview);
     if ((life->carrying || wheelInput) && (pad.buttons & FIN_FIRE)) life->blockFire=1;
     int native=buttons & START_BUTTON, old=oldbuttons & START_BUTTON;
-    if(!wheelInput){
+    if(!wheelInput && !slapping){
         if(pad.buttons&FIN_Y) native|=B_BUTTON;
         if(previous&FIN_Y) old|=B_BUTTON;
         if((pad.buttons&FIN_AIM)&&!life->carrying) native|=R_TRIG;
@@ -264,14 +347,14 @@ static void xboxFinalsProcessInput(s8 stick_x, s8 stick_y, u16 buttons, u16 oldb
         lanButtons = effective;
     }
     // Accept a new trigger squeeze on the same report as a pad selection.
-    if ((!wheelInput || equipment==PAD_ITEM) && !selecting && life->carrying &&
+    if ((!wheelInput || equipment==PAD_ITEM) && !slapping && !selecting && life->carrying &&
         (pressed&FIN_FIRE) && life->validPreview) {
         life->pad=life->preview;
         life->placed=1;
         life->padCooldown=0;
         life->carrying=0;
     }
-    gunSetGunAmmoVisible(0x40000000,!life->carrying);
+    gunSetGunAmmoVisible(0x40000000,slapping || !life->carrying);
     bondviewProcessInput(0,0,native,old);
     float lx=pad.lx,ly=pad.ly;
     float length=sqrtf(lx*lx+ly*ly);
@@ -331,4 +414,4 @@ static void xboxFinalsVertical(int *useHeight, float *offset)
     }
 }
 
-#include "port/xbox/core/pad_render.inc"
+#include "pad_render.inc"

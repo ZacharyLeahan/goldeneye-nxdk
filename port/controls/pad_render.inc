@@ -123,7 +123,7 @@ Gfx *xboxDrawWorldPads(Gfx *dl)
 static int xboxDrawHeldPad(Gfx **gdl)
 {
     XboxLife *life=&xboxLives[get_cur_playernum()];
-    if (!life->carrying || g_CurrentPlayer->bonddead) return 0;
+    if (!life->carrying || life->slap.phase || g_CurrentPlayer->bonddead) return 0;
     if (!life->wheelOpen && !g_CurrentPlayer->mpmenuon && !g_CurrentPlayer->watch_animation_state) {
         *gdl=xboxDrawPadMesh(*gdl,NULL,0,1);
     }

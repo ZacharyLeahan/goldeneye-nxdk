@@ -8,14 +8,13 @@ extern void lanDesktopAddresses(char *text, size_t size);
 
 void init_mp_options_for_scenario(s32 numplayers);
 
-enum MultiplayerPage { DOSSIER, MULTIPLAYER, LAN_ROLES, JOIN_ADDRESS, HOST_WAIT };
+enum MultiplayerPage { DOSSIER, MULTIPLAYER, LAN_ROLES, JOIN_LIST, JOIN_ADDRESS, HOST_WAIT };
 static enum MultiplayerPage multiplayerPage;
 static int addressOctet = 3;
 static int hostAddress[4] = {192, 168, 1, 1};
 static const char *modeMessage;
-#ifdef GE_LAN_HOST
 static char hostAddresses[512];
-#endif
+static int discoverySelection;
 
 static void openMultiplayerPage(enum MultiplayerPage page)
 {
@@ -29,12 +28,7 @@ static void openMultiplayerPage(enum MultiplayerPage page)
 static void initMultiplayerPage(void)
 {
     lanClose();
-#ifdef __XBOX__
     openMultiplayerPage(MULTIPLAYER);
-#else
-    multiplayerPage = DOSSIER;
-    modeMessage = NULL;
-#endif
 }
 
 static void multiplayerBack(void)
@@ -42,19 +36,11 @@ static void multiplayerBack(void)
     lanClose();
     switch (multiplayerPage) {
     case MULTIPLAYER:
-#ifdef __XBOX__
         frontChangeMenu(MENU_FILE_SELECT, FALSE);
-#else
-        openMultiplayerPage(DOSSIER);
-        setCursorPOSforMode(GAMEMODE_MULTI);
-#endif
         break;
     case JOIN_ADDRESS:
-#ifdef __XBOX__
-        openMultiplayerPage(MULTIPLAYER);
-#else
+    case JOIN_LIST:
         openMultiplayerPage(LAN_ROLES);
-#endif
         break;
     case HOST_WAIT:
         openMultiplayerPage(LAN_ROLES);
@@ -108,9 +94,28 @@ static void multiplayerMenuTick(void)
         multiplayerBack();
         return;
     }
-    if (lanActive()) {
+    if (lanActive() && !lanDiscovering()) {
         lanPoll();
         if (lanConnected()) enterNetworkMatch();
+        return;
+    }
+    if (multiplayerPage == JOIN_LIST) {
+        lanPoll();
+        int count = lanDiscoveryCount();
+        int rows = count + 2;
+        if (discoverySelection >= rows) discoverySelection = rows - 1;
+        if (keys & U_JPAD) discoverySelection = (discoverySelection + rows - 1) % rows;
+        if (keys & D_JPAD) discoverySelection = (discoverySelection + 1) % rows;
+        if (confirm) {
+            if (discoverySelection < count) {
+                if (!lanJoinDiscovered(discoverySelection)) modeMessage = lanStatus();
+            } else if (discoverySelection == count) {
+                lanDiscoverRefresh();
+            } else {
+                lanClose();
+                openMultiplayerPage(JOIN_ADDRESS);
+            }
+        }
         return;
     }
     if (multiplayerPage == JOIN_ADDRESS) {
@@ -131,32 +136,44 @@ static void multiplayerMenuTick(void)
         return;
     }
     mission_difficulty_highlighted = cursor_v_pos >= 243.0f;
+    if (multiplayerPage == MULTIPLAYER && cursor_v_pos >= 275.0f)
+        mission_difficulty_highlighted = 2;
     if (!confirm) return;
     if (multiplayerPage == MULTIPLAYER) {
-        if (mission_difficulty_highlighted) {
-#ifdef __XBOX__
-            openMultiplayerPage(JOIN_ADDRESS);
-#else
+        if (mission_difficulty_highlighted == 0) {
+            gamemode = GAMEMODE_SOLO;
+            sndPlaySfx(g_musicSfxBufferPtr, DOOR_METAL_CLOSE_SFX, 0);
+            frontChangeMenu(MENU_MISSION_SELECT, FALSE);
+            set_cursor_to_stage_solo(0);
+            return;
+        }
+        if (mission_difficulty_highlighted == 1) {
             openMultiplayerPage(LAN_ROLES);
-#endif
         } else if (joyGetControllerCount() >= 2) {
             enterLocalMatchSetup();
         } else {
             modeMessage = "CONNECT A SECOND CONTROLLER\n";
         }
     }
-#ifdef GE_LAN_HOST
     else if (multiplayerPage == LAN_ROLES) {
         if (mission_difficulty_highlighted) {
-            openMultiplayerPage(JOIN_ADDRESS);
-        } else if (lanDesktopOpen(NULL)) {
+            openMultiplayerPage(JOIN_LIST);
+            discoverySelection = 0;
+            if (!lanDiscover()) modeMessage = lanStatus();
+        }
+#ifdef GE_LAN_HOST
+        else if (lanDesktopOpen(NULL)) {
             openMultiplayerPage(HOST_WAIT);
             lanDesktopAddresses(hostAddresses, sizeof(hostAddresses));
-        } else {
-            modeMessage = lanStatus();
         }
-    }
+#else
+        else if (lanHost()) {
+            openMultiplayerPage(HOST_WAIT);
+            lanLocalAddress(hostAddresses, sizeof(hostAddresses));
+        }
 #endif
+        else modeMessage = lanStatus();
+    }
 }
 
 static Gfx *multiplayerLine(Gfx *dl, int x, int y, const char *text)
@@ -167,17 +184,53 @@ static Gfx *multiplayerLine(Gfx *dl, int x, int y, const char *text)
 
 static Gfx *drawMultiplayerPage(Gfx *dl)
 {
-    if (multiplayerPage == JOIN_ADDRESS) {
+    if (multiplayerPage == JOIN_LIST) {
+        int count = lanDiscoveryCount();
+        int first = 0;
+        if (count > 3) {
+            if (discoverySelection < count) first = discoverySelection > 1 ? discoverySelection - 1 : 0;
+            else first = count - 3;
+            if (first > count - 3) first = count - 3;
+        }
+        dl = multiplayerLine(dl, 110, 188, "AVAILABLE LAN MATCHES\n");
+        if (!count) dl = multiplayerLine(dl, 135, 220, "NO MATCHES FOUND\n");
+        for (int row = 0; row < 3 && first + row < count; ++row) {
+            int index = first + row, y = 212 + row * 22;
+            const LanMatch *match = lanDiscoveryMatch(index);
+            char line[96];
+            snprintf(line, sizeof(line), "%s  %s  %d/%d\n", match->name,
+                     lanArenaName(match->arena), match->players, match->capacity);
+            if (index == discoverySelection && !tab_prev_highlight)
+                dl = microcode_constructor_related_to_menus(dl, 108, y-2, 510, y+14, 50);
+            dl = multiplayerLine(dl, 112, y, line);
+        }
+        static const char *const actions[] = {"REFRESH\n", "ENTER IP MANUALLY\n"};
+        for (int action = 0; action < 2; ++action) {
+            int index = count + action, y = 278 + action * 22;
+            if (index == discoverySelection && !tab_prev_highlight)
+                dl = microcode_constructor_related_to_menus(dl, 108, y-2, 310, y+14, 50);
+            dl = multiplayerLine(dl, 112, y, actions[action]);
+        }
+        if (discoverySelection < count) {
+            const LanMatch *match = lanDiscoveryMatch(discoverySelection);
+            char endpoint[48];
+            snprintf(endpoint, sizeof(endpoint), "%s:%u\n", match->address, (unsigned)match->port);
+            dl = multiplayerLine(dl, 112, 322, endpoint);
+        } else {
+            dl = multiplayerLine(dl, 112, 322, lanStatus());
+        }
+        return dl;
+    }
+    else if (multiplayerPage == JOIN_ADDRESS) {
         char field[4][8], address[40];
         for (int i = 0; i < 4; ++i)
             sprintf(field[i], i == addressOctet ? "[%d]" : "%d", hostAddress[i]);
         sprintf(address, "%s.%s.%s.%s\n", field[0], field[1], field[2], field[3]);
-        dl = multiplayerLine(dl, 135, 210, "WINDOWS HOST IP\n");
+        dl = multiplayerLine(dl, 135, 210, "HOST IP\n");
         dl = multiplayerLine(dl, 135, 232, address);
         dl = multiplayerLine(dl, 135, 254, "D-PAD EDIT   LT X10\n");
         dl = multiplayerLine(dl, 135, 276, "A JOIN   B BACK\n");
     }
-#ifdef GE_LAN_HOST
     else if (multiplayerPage == HOST_WAIT) {
         dl = multiplayerLine(dl, 135, 210, "WAITING FOR PLAYER\n");
         // Each interface is a separate line in the existing desktop host UI.
@@ -192,17 +245,18 @@ static Gfx *drawMultiplayerPage(Gfx *dl)
         if (!*hostAddresses) dl = multiplayerLine(dl, 135, 232, "CHECK NETWORK CONNECTION\n");
         return dl;
     }
-#endif
     else {
-        static const char *const modes[] = {"LOCAL MULTIPLAYER\n", "LAN MULTIPLAYER\n"};
+        static const char *const modes[] = {"SOLO CAMPAIGN\n", "LAN MULTIPLAYER\n", "LOCAL MULTIPLAYER\n"};
         static const char *const roles[] = {"HOST MATCH\n", "JOIN MATCH\n"};
         const char *const *rows = multiplayerPage == MULTIPLAYER ? modes : roles;
-        for (int i = 0; i < 2; ++i) {
+        static const char *const numbers[] = {"1.\n", "2.\n", "3.\n"};
+        int count = multiplayerPage == MULTIPLAYER ? sizeof(modes) / sizeof(modes[0]) : 2;
+        for (int i = 0; i < count; ++i) {
             int y = 220 + i * 32, height, width;
             textMeasure(&height, &width, (s8 *)rows[i], ptrFontZurichBoldChars, ptrFontZurichBold, 0);
             if (i == mission_difficulty_highlighted && !tab_prev_highlight)
                 dl = microcode_constructor_related_to_menus(dl, 148, y-2, 175+width, y+14, 50);
-            dl = multiplayerLine(dl, 150, y, i ? "2.\n" : "1.\n");
+            dl = multiplayerLine(dl, 150, y, numbers[i]);
             dl = multiplayerLine(dl, 170, y, rows[i]);
         }
     }

@@ -1,0 +1,2 @@
+static const char *names[]={"Unarmed","Fist","Knife","Throwing knife","PP7","PP7 silenced","DD44 Dostovei","Klobb","KF7 Soviet","ZMG","D5K Deutsche","D5K silenced","Phantom","AR33","RC-P90","Shotgun","Automatic shotgun","Sniper rifle","Cougar Magnum","Golden Gun","Silver PP7","Gold PP7","Moonraker Laser","Watch Laser","Grenade Launcher","Rocket Launcher","Grenades"};
+static const char*itemName(int id){return id==PAD_ITEM?"Jump Pad":id>=0&&id<=GRENADE_ITEM?names[id]:"Equipment";}

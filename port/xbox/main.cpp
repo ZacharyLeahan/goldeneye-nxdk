@@ -142,7 +142,7 @@ static void profileMultiplayerFrame()
     if (seats < 2) { stage = -1; return; }
     unsigned currentGeneration = xboxProfileGame(&current, &shots, &throws);
     if (ftRecording()) {
-        ftRecord(FT_SHOTS, ftRenderId, (unsigned)shots);
+        ftRecord(FT_SHOTS, ftRenderId, ((uint64_t)throws << 32) | (unsigned)shots);
         previous = 0;
         return;
     }
