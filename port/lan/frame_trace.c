@@ -66,6 +66,20 @@ static unsigned comparisonTag(unsigned base)
     return base + block * 2 + modes[block];
 }
 
+#ifdef __XBOX__
+// The game thread selects tuning for the active mission. Each consumer takes a
+// single snapshot when submitting a graphics task or starting a display list.
+enum { CAMPAIGN_COLOR_TABLE = 1, CAMPAIGN_EARLY_WAKE = 2, CAMPAIGN_LOCAL_VERTEX_CURSOR = 4 };
+static unsigned campaignTuning;
+void ftSetCampaignTuning(int useColorTable, int wakeGraphics, int localVertexCursor)
+{
+    unsigned flags = (useColorTable ? CAMPAIGN_COLOR_TABLE : 0) |
+                     (wakeGraphics ? CAMPAIGN_EARLY_WAKE : 0) |
+                     (localVertexCursor ? CAMPAIGN_LOCAL_VERTEX_CURSOR : 0);
+    __atomic_store_n(&campaignTuning, flags, __ATOMIC_RELAXED);
+}
+#endif
+
 static int comparePair;
 static int compareHud, hudVisible;
 int ftHudVisible(void) { return hudVisible && ftRecording(); }
@@ -84,6 +98,9 @@ int ftEarlyWake(void)
         return (tag & 1) ? 2 : 1;
     }
     if (!compareWake) {
+#ifdef __XBOX__
+        if (__atomic_load_n(&campaignTuning, __ATOMIC_RELAXED) & CAMPAIGN_EARLY_WAKE) return 2;
+#endif
         if (!__atomic_load_n(&egyptLan, __ATOMIC_RELAXED)) return 0;
         // Historical renderer comparisons used the single-graphics wake.
         return (comparePair || compareMaterial || compareDraw || compareTri4) ? 1 : 2;
@@ -106,7 +123,13 @@ int ftListBegin(void)
     // their historical material baseline for comparable measurements.
     unsigned tag = __atomic_load_n(&egyptLan, __ATOMIC_RELAXED) ? 1 : 0;
     measuringList = ftRecording();
-    if (!measuringList) return tag ? FT_LIST_REUSE_MATERIAL : 0;
+    unsigned campaignFlags = 0;
+#ifdef __XBOX__
+    unsigned tuning = __atomic_load_n(&campaignTuning, __ATOMIC_RELAXED);
+    if (tuning & CAMPAIGN_COLOR_TABLE) campaignFlags |= FT_LIST_COLOR_TABLE;
+    if (tuning & CAMPAIGN_LOCAL_VERTEX_CURSOR) campaignFlags |= FT_LIST_LOCAL_VERTEX_CURSOR;
+#endif
+    if (!measuringList) return campaignFlags | (tag ? FT_LIST_REUSE_MATERIAL : 0);
     drawTicks = 0;
     unsigned flags = tag ? FT_LIST_REUSE_MATERIAL : 0;
     tri4Ticks = tri4Commands = 0;
@@ -122,7 +145,7 @@ int ftListBegin(void)
     ftRecord(FT_LIST_BEGIN, ftRenderId, tag);
     __atomic_store_n(&rasterPhase, (ftRenderId << 2) | 1u, __ATOMIC_RELEASE);
     if (!compareTri4 && !compareHud) flags = (tag & 1) ? FT_LIST_REUSE_MATERIAL : 0;
-    return FT_LIST_TIMED | flags;
+    return FT_LIST_TIMED | flags | campaignFlags;
 }
 
 uint64_t ftTri4Begin(void)

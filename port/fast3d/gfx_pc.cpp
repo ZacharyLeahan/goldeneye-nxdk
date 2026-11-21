@@ -75,6 +75,27 @@ struct RGBA {
     uint8_t r, g, b, a;
 };
 
+#ifdef __XBOX__
+// The Xbox CPU pays for each floating-point division in vertex assembly.
+// All 256 entries use the same expression as the ordinary emission path.
+struct NormalizedColorBytes {
+    float values[256];
+    constexpr NormalizedColorBytes() : values{} {
+        for (unsigned i = 0; i < 256; ++i) values[i] = float(i) / 255.0f;
+    }
+};
+static constexpr NormalizedColorBytes normalizedColorBytes;
+static bool useColorTable;
+static bool useLocalVertexCursor;
+#endif
+
+static inline float normalizeColorByte(uint8_t value) {
+#ifdef __XBOX__
+    if (useColorTable) return normalizedColorBytes.values[value];
+#endif
+    return float(value) / 255.0f;
+}
+
 struct NormalColor {
     union {
         struct { uint8_t r, g, b, a; };
@@ -2838,6 +2859,185 @@ static void prepareTriangleMaterial() {
     material.clip_parameters = gfx_rapi->get_clip_parameters();
 }
 
+template<typename NextFloat>
+static inline void emitTriangleVertices(LoadedVertex *const *emit_v, int n_emit_verts,
+                                        bool is_rect, NextFloat nextFloat) {
+    for (int i = 0; i < n_emit_verts; i++) {
+        struct LoadedVertex* vi = emit_v[i];
+        float z = vi->z, w = vi->w;
+        if (material.clip_parameters.z_is_from_0_to_1) {
+            z = (z + w) / 2.0f;
+        }
+
+        nextFloat() = vi->x;
+        nextFloat() = material.clip_parameters.invert_y ? -vi->y : vi->y;
+        nextFloat() = z;
+        nextFloat() = w;
+
+        for (int t = 0; t < 2; t++) {
+            if (!material.used_textures[t]) {
+                continue;
+            }
+
+            // TODO: fix this; for now just ignore smaller mips
+            const uint32_t tile = gfx_lod_tile_offset(t);
+
+            float u = vi->u / 32.0f;
+            float v = vi->v / 32.0f;
+
+            int shifts = rdp.texture_tile[rdp.first_tile_index + tile].shifts;
+            int shiftt = rdp.texture_tile[rdp.first_tile_index + tile].shiftt;
+            if (shifts != 0) {
+                if (shifts <= 10) {
+                    u /= 1 << shifts;
+                } else {
+                    u *= 1 << (16 - shifts);
+                }
+            }
+            if (shiftt != 0) {
+                if (shiftt <= 10) {
+                    v /= 1 << shiftt;
+                } else {
+                    v *= 1 << (16 - shiftt);
+                }
+            }
+
+            u -= rdp.texture_tile[rdp.first_tile_index + tile].uls / 4.0f;
+            v -= rdp.texture_tile[rdp.first_tile_index + tile].ult / 4.0f;
+
+            // D74 (Video.WrapFix, opt-in): pre-wrap UVs at the tile-window
+            // period when the render tile is a sub-region of the uploaded
+            // image. Flags/sizes are precomputed per texunit above (indexed by
+            // `t`, not the vertex `i`). The old in-place version was inert
+            // (guard `cms & G_TX_WRAP` == `& 0`) and OOB (`tex_width2[i]` with
+            // `i` = vertex). See SMALL-FIXES B1.
+            if (material.wrap_s[t]) {
+                u = fmodf(u, material.wrap_tw[t]);
+                if (u < 0.0f) u += material.wrap_tw[t];
+                u += material.wrap_uls[t];
+                /* RC3: when the N64 wrap period (wrap_tw) exceeds the uploaded
+                 * image width, the [width, period) band has no real texels --
+                 * clamp it to the edge rather than let GL_REPEAT restart the
+                 * image early. Never triggers for the sub-tile-window case
+                 * (wrap_tw + wrap_uls stay within tex_width). */
+                if (material.tex_width[t] > 0 && u > (float)material.tex_width[t]) u = (float)material.tex_width[t] - 0.5f;
+            }
+            if (material.wrap_t[t]) {
+                v = fmodf(v, material.wrap_th[t]);
+                if (v < 0.0f) v += material.wrap_th[t];
+                v += material.wrap_ult[t];
+                if (material.tex_height[t] > 0 && v > (float)material.tex_height[t]) v = (float)material.tex_height[t] - 0.5f;
+            }
+
+            if (!is_rect) {
+                if (!(rdp.other_mode_h & G_TP_PERSP)) {
+                    u *= 0.5f;
+                    v *= 0.5f;
+                }
+
+                if ((rdp.other_mode_h & (3U << G_MDSFT_TEXTFILT)) != G_TF_POINT) {
+                    // Linear filter adds 0.5f to the coordinates
+                    u += 0.5f;
+                    v += 0.5f;
+                }
+            }
+
+            nextFloat() = u / material.tex_width[t];
+            nextFloat() = v / material.tex_height[t];
+
+            bool clampS = material.tm & (1 << 2 * t);
+            bool clampT = material.tm & (1 << (2 * t + 1));
+
+            if (clampS) {
+                nextFloat() = (material.tex_width2[t] - 0.5f) / material.tex_width[t];
+            }
+            if (clampT) {
+                nextFloat() = (material.tex_height2[t] - 0.5f) / material.tex_height[t];
+            }
+        }
+
+        if (material.use_fog) {
+            nextFloat() = normalizeColorByte(rdp.fog_color.r);
+            nextFloat() = normalizeColorByte(rdp.fog_color.g);
+            nextFloat() = normalizeColorByte(rdp.fog_color.b);
+            nextFloat() = vi->fog_n / 255.0f; // D540: see LoadedVertex.fog_n
+        }
+
+        if (material.use_grayscale) {
+            nextFloat() = normalizeColorByte(rdp.grayscale_color.r);
+            nextFloat() = normalizeColorByte(rdp.grayscale_color.g);
+            nextFloat() = normalizeColorByte(rdp.grayscale_color.b);
+            nextFloat() = normalizeColorByte(rdp.grayscale_color.a); // lerp interpolation factor (not alpha)
+        }
+
+        for (int j = 0; j < material.num_inputs; j++) {
+            struct RGBA* color = 0;
+            struct RGBA tmp = { 0 };
+            for (int k = 0; k < 1 + (material.use_alpha ? 1 : 0); k++) {
+                switch (material.comb->shader_input_mapping[k][j]) {
+                        // Note: CCMUX constants and ACMUX constants used here have same value, which is why this works
+                        // (except LOD fraction).
+                    case G_CCMUX_PRIMITIVE:
+                        color = &rdp.prim_color;
+                        break;
+                    case G_CCMUX_SHADE:
+                        color = &vi->color;
+                        break;
+                    case G_CCMUX_SHADE_ALPHA:
+                        tmp.r = tmp.g = tmp.b = vi->color.a;
+                        color = &tmp;
+                        break;
+                    case G_CCMUX_ENVIRONMENT:
+                        color = &rdp.env_color;
+                        break;
+                    case G_CCMUX_PRIMITIVE_ALPHA: {
+                        tmp.r = tmp.g = tmp.b = rdp.prim_color.a;
+                        color = &tmp;
+                        break;
+                    }
+                    case G_CCMUX_ENV_ALPHA: {
+                        tmp.r = tmp.g = tmp.b = rdp.env_color.a;
+                        color = &tmp;
+                        break;
+                    }
+                    case G_CCMUX_PRIM_LOD_FRAC: {
+                        tmp.r = tmp.g = tmp.b = rdp.prim_lod_fraction;
+                        color = &tmp;
+                        break;
+                    }
+                    case G_CCMUX_LOD_FRACTION: {
+                        if (rdp.other_mode_h & G_TL_LOD) {
+                            // HACK: very roughly eyeballed based on the carpets in Defection
+                            // this is actually supposed to be calculated per pixel
+                            const float distance_frac = std::max(0.f, std::min(w / 1024.f, 1.f));
+                            tmp.r = tmp.g = tmp.b = tmp.a = (0.7f + distance_frac * 0.3f) * 255.f;
+                        } else {
+                            tmp.r = tmp.g = tmp.b = tmp.a = 255;
+                        }
+                        color = &tmp;
+                        break;
+                    }
+                    case G_ACMUX_PRIM_LOD_FRAC:
+                        tmp.a = rdp.prim_lod_fraction;
+                        color = &tmp;
+                        break;
+                    default:
+                        memset(&tmp, 0, sizeof(tmp));
+                        color = &tmp;
+                        break;
+                }
+                if (k == 0) {
+                    nextFloat() = normalizeColorByte(color->r);
+                    nextFloat() = normalizeColorByte(color->g);
+                    nextFloat() = normalizeColorByte(color->b);
+                } else {
+                    nextFloat() = normalizeColorByte(color->a);
+                }
+            }
+        }
+    }
+}
+
 static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bool is_rect, bool projectedCull = false) {
     /* D75D: only real model triangles (all indices < MAX_VERTICES); the
      * fullscreen-quad helpers use indices MAX_VERTICES+0..3 and would skew maxtri. */
@@ -3034,179 +3234,15 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     if (buf_vbo_num_tris + n_out_tris > MAX_BUFFERED) {
         gfx_flush(); // buf_vbo holds MAX_BUFFERED triangles; make room for 1-2
     }
-    for (int i = 0; i < n_emit_verts; i++) {
-        struct LoadedVertex* vi = emit_v[i];
-        float z = vi->z, w = vi->w;
-        if (material.clip_parameters.z_is_from_0_to_1) {
-            z = (z + w) / 2.0f;
-        }
-
-        buf_vbo[buf_vbo_len++] = vi->x;
-        buf_vbo[buf_vbo_len++] = material.clip_parameters.invert_y ? -vi->y : vi->y;
-        buf_vbo[buf_vbo_len++] = z;
-        buf_vbo[buf_vbo_len++] = w;
-
-        for (int t = 0; t < 2; t++) {
-            if (!material.used_textures[t]) {
-                continue;
-            }
-
-            // TODO: fix this; for now just ignore smaller mips
-            const uint32_t tile = gfx_lod_tile_offset(t);
-
-            float u = vi->u / 32.0f;
-            float v = vi->v / 32.0f;
-
-            int shifts = rdp.texture_tile[rdp.first_tile_index + tile].shifts;
-            int shiftt = rdp.texture_tile[rdp.first_tile_index + tile].shiftt;
-            if (shifts != 0) {
-                if (shifts <= 10) {
-                    u /= 1 << shifts;
-                } else {
-                    u *= 1 << (16 - shifts);
-                }
-            }
-            if (shiftt != 0) {
-                if (shiftt <= 10) {
-                    v /= 1 << shiftt;
-                } else {
-                    v *= 1 << (16 - shiftt);
-                }
-            }
-
-            u -= rdp.texture_tile[rdp.first_tile_index + tile].uls / 4.0f;
-            v -= rdp.texture_tile[rdp.first_tile_index + tile].ult / 4.0f;
-
-            // D74 (Video.WrapFix, opt-in): pre-wrap UVs at the tile-window
-            // period when the render tile is a sub-region of the uploaded
-            // image. Flags/sizes are precomputed per texunit above (indexed by
-            // `t`, not the vertex `i`). The old in-place version was inert
-            // (guard `cms & G_TX_WRAP` == `& 0`) and OOB (`tex_width2[i]` with
-            // `i` = vertex). See SMALL-FIXES B1.
-            if (material.wrap_s[t]) {
-                u = fmodf(u, material.wrap_tw[t]);
-                if (u < 0.0f) u += material.wrap_tw[t];
-                u += material.wrap_uls[t];
-                /* RC3: when the N64 wrap period (wrap_tw) exceeds the uploaded
-                 * image width, the [width, period) band has no real texels --
-                 * clamp it to the edge rather than let GL_REPEAT restart the
-                 * image early. Never triggers for the sub-tile-window case
-                 * (wrap_tw + wrap_uls stay within tex_width). */
-                if (material.tex_width[t] > 0 && u > (float)material.tex_width[t]) u = (float)material.tex_width[t] - 0.5f;
-            }
-            if (material.wrap_t[t]) {
-                v = fmodf(v, material.wrap_th[t]);
-                if (v < 0.0f) v += material.wrap_th[t];
-                v += material.wrap_ult[t];
-                if (material.tex_height[t] > 0 && v > (float)material.tex_height[t]) v = (float)material.tex_height[t] - 0.5f;
-            }
-
-            if (!is_rect) {
-                if (!(rdp.other_mode_h & G_TP_PERSP)) {
-                    u *= 0.5f;
-                    v *= 0.5f;
-                }
-
-                if ((rdp.other_mode_h & (3U << G_MDSFT_TEXTFILT)) != G_TF_POINT) {
-                    // Linear filter adds 0.5f to the coordinates
-                    u += 0.5f;
-                    v += 0.5f;
-                }
-            }
-
-            buf_vbo[buf_vbo_len++] = u / material.tex_width[t];
-            buf_vbo[buf_vbo_len++] = v / material.tex_height[t];
-
-            bool clampS = material.tm & (1 << 2 * t);
-            bool clampT = material.tm & (1 << (2 * t + 1));
-
-            if (clampS) {
-                buf_vbo[buf_vbo_len++] = (material.tex_width2[t] - 0.5f) / material.tex_width[t];
-            }
-            if (clampT) {
-                buf_vbo[buf_vbo_len++] = (material.tex_height2[t] - 0.5f) / material.tex_height[t];
-            }
-        }
-
-        if (material.use_fog) {
-            buf_vbo[buf_vbo_len++] = rdp.fog_color.r / 255.0f;
-            buf_vbo[buf_vbo_len++] = rdp.fog_color.g / 255.0f;
-            buf_vbo[buf_vbo_len++] = rdp.fog_color.b / 255.0f;
-            buf_vbo[buf_vbo_len++] = vi->fog_n / 255.0f; // D540: see LoadedVertex.fog_n
-        }
-
-        if (material.use_grayscale) {
-            buf_vbo[buf_vbo_len++] = rdp.grayscale_color.r / 255.0f;
-            buf_vbo[buf_vbo_len++] = rdp.grayscale_color.g / 255.0f;
-            buf_vbo[buf_vbo_len++] = rdp.grayscale_color.b / 255.0f;
-            buf_vbo[buf_vbo_len++] = rdp.grayscale_color.a / 255.0f; // lerp interpolation factor (not alpha)
-        }
-
-        for (int j = 0; j < material.num_inputs; j++) {
-            struct RGBA* color = 0;
-            struct RGBA tmp = { 0 };
-            for (int k = 0; k < 1 + (material.use_alpha ? 1 : 0); k++) {
-                switch (material.comb->shader_input_mapping[k][j]) {
-                        // Note: CCMUX constants and ACMUX constants used here have same value, which is why this works
-                        // (except LOD fraction).
-                    case G_CCMUX_PRIMITIVE:
-                        color = &rdp.prim_color;
-                        break;
-                    case G_CCMUX_SHADE:
-                        color = &vi->color;
-                        break;
-                    case G_CCMUX_SHADE_ALPHA:
-                        tmp.r = tmp.g = tmp.b = vi->color.a;
-                        color = &tmp;
-                        break;
-                    case G_CCMUX_ENVIRONMENT:
-                        color = &rdp.env_color;
-                        break;
-                    case G_CCMUX_PRIMITIVE_ALPHA: {
-                        tmp.r = tmp.g = tmp.b = rdp.prim_color.a;
-                        color = &tmp;
-                        break;
-                    }
-                    case G_CCMUX_ENV_ALPHA: {
-                        tmp.r = tmp.g = tmp.b = rdp.env_color.a;
-                        color = &tmp;
-                        break;
-                    }
-                    case G_CCMUX_PRIM_LOD_FRAC: {
-                        tmp.r = tmp.g = tmp.b = rdp.prim_lod_fraction;
-                        color = &tmp;
-                        break;
-                    }
-                    case G_CCMUX_LOD_FRACTION: {
-                        if (rdp.other_mode_h & G_TL_LOD) {
-                            // HACK: very roughly eyeballed based on the carpets in Defection
-                            // this is actually supposed to be calculated per pixel
-                            const float distance_frac = std::max(0.f, std::min(w / 1024.f, 1.f));
-                            tmp.r = tmp.g = tmp.b = tmp.a = (0.7f + distance_frac * 0.3f) * 255.f;
-                        } else {
-                            tmp.r = tmp.g = tmp.b = tmp.a = 255;
-                        }
-                        color = &tmp;
-                        break;
-                    }
-                    case G_ACMUX_PRIM_LOD_FRAC:
-                        tmp.a = rdp.prim_lod_fraction;
-                        color = &tmp;
-                        break;
-                    default:
-                        memset(&tmp, 0, sizeof(tmp));
-                        color = &tmp;
-                        break;
-                }
-                if (k == 0) {
-                    buf_vbo[buf_vbo_len++] = color->r / 255.0f;
-                    buf_vbo[buf_vbo_len++] = color->g / 255.0f;
-                    buf_vbo[buf_vbo_len++] = color->b / 255.0f;
-                } else {
-                    buf_vbo[buf_vbo_len++] = color->a / 255.0f;
-                }
-            }
-        }
+#ifdef __XBOX__
+    if (useLocalVertexCursor) {
+        float *dst = buf_vbo + buf_vbo_len;
+        emitTriangleVertices(emit_v, n_emit_verts, is_rect, [&dst]() -> float& { return *dst++; });
+        buf_vbo_len = dst - buf_vbo;
+    } else
+#endif
+    {
+        emitTriangleVertices(emit_v, n_emit_verts, is_rect, []() -> float& { return buf_vbo[buf_vbo_len++]; });
     }
 
     buf_vbo_num_tris += n_out_tris;
@@ -4731,6 +4767,10 @@ extern "C" void gfx_run(Gfx* commands) {
     const uint64_t perf_tpre = perf_t0 ? gfx_perf_now_ns() : 0;
     triangleMaterialReady = false;
     const int listFlags = ftListBegin();
+#ifdef __XBOX__
+    useLocalVertexCursor = (listFlags & FT_LIST_LOCAL_VERTEX_CURSOR) != 0;
+    useColorTable = (listFlags & FT_LIST_COLOR_TABLE) != 0;
+#endif
     traceVisibleList = (listFlags & FT_LIST_TIMED) != 0;
     traceTri4 = (listFlags & FT_LIST_TRACE_TRI4) != 0;
     projectTri4 = (listFlags & FT_LIST_PROJECT_TRI4) != 0;
