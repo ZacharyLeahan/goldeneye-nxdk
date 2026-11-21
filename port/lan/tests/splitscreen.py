@@ -12,7 +12,7 @@ from firefight import game_data
 
 ARENAS = {
     "Temple": 38, "Complex": 31, "Caves": 50, "Library": 48, "Basement": 45,
-    "Stack": 46, "Facility": 34, "Bunker": 27, "Archives": 24, "Caverns": 39, "Egypt": 32,
+    "Stack": 46, "Facility": 34, "Bunker": 27, "Archives": 24, "Caverns": 39, "Egypt": 32, "Statue": 22,
 }
 
 
