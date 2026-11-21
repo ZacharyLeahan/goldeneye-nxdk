@@ -210,6 +210,9 @@ jobs:
       - name: Install dependencies
         run: |
           echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache" >> "$GITHUB_ENV"
+      - name: Install binary packaging tools
+        if: github.repository != 'ZacharyLeahan/goldeneye-nxdk'
+        run: |
           apt-get update
           apt-get install -y patchelf
           curl -fsSL -o /tmp/get-pip.py https://bootstrap.pypa.io/pip/3.9/get-pip.py
@@ -246,6 +249,7 @@ jobs:
       # stdlib scripts, so PyInstaller --onefile is clean; lands in
       # tools_pc/dist/prepare-assets/ where bundle-linux.sh picks it up.
       - name: Freeze asset converter (PyInstaller)
+        if: github.repository != 'ZacharyLeahan/goldeneye-nxdk'
         run: |
           python3 -c "import PyInstaller, sys; sys.exit(PyInstaller.__version__ != '6.22.3')" 2>/dev/null \
             || python3 -m pip install --quiet pyinstaller==6.22.3
@@ -276,6 +280,7 @@ jobs:
       # so the tarball runs as-is on any distro / a sideloaded Steam Deck;
       # zlib + libGL stay system deps. Same ROM / size guards as Windows.
       - name: Package Linux bundle
+        if: github.repository != 'ZacharyLeahan/goldeneye-nxdk'
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             V="${GITHUB_REF_NAME}"
@@ -364,6 +369,7 @@ jobs:
       # pccg sidecars are missing (port/src/romconvert.c). Lands in
       # tools_pc/dist/prepare-assets/ where bundle-win.sh picks it up.
       - name: Freeze asset converter (PyInstaller)
+        if: github.repository != 'ZacharyLeahan/goldeneye-nxdk'
         run: |
           # MSYS2's mingw python ships without pip and has ensurepip
           # disabled — install pip from pacman, then PyInstaller.
@@ -395,6 +401,7 @@ jobs:
       # throwaway CI string. bundle-win.sh hard-fails if a ROM image or an
       # oversized blob ends up inside the bundle.
       - name: Package Windows bundle
+        if: github.repository != 'ZacharyLeahan/goldeneye-nxdk'
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             V="${GITHUB_REF_NAME}"
