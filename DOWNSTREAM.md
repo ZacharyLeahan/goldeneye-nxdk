@@ -70,14 +70,14 @@ second player. The fork-controls build was also tested in a physical two-player
 match using White, right-stick up, and A on port 2. In a subsequent Complex
 match both players independently turned and threw grenades using the fork
 wheel. The hardware recorded four grenade launches. The three seven-second
-samples containing throws averaged 59.8–60.0 FPS with 19–20 ms p95 frame
+samples containing throws averaged 59.8Ã¢â‚¬â€œ60.0 FPS with 19Ã¢â‚¬â€œ20 ms p95 frame
 intervals.
 
 ### Play Complex locally
 
 1. Bind controllers to Xbox ports 1 and 2 before entering multiplayer setup.
 2. At file select, point the left stick at a dossier and press A. The mode
-   page lists **Local Multiplayer** and **LAN Multiplayer**. Select **Local Multiplayer** with A. On Windows, select **Multiplayer** in the dossier first.
+   page lists **Solo Campaign**, **LAN Multiplayer**, then **Local Multiplayer**. Select **Local Multiplayer** with A.
 3. Multiplayer Options opens with **Level Complex** selected. Check that it
    shows **Players 2**. The level picker displays Complex in the top row,
    third tile. The picker enforces each arena's native player limit.
@@ -98,24 +98,19 @@ intervals.
    placement. RT deploys the pad and B stows it. On an invalid surface,
    RT keeps the pad in hand. Either player can walk onto the deployed pad.
 
-The Xbox target builds the mantle search and climb path, slide momentum,
-look response, wheel selection, layout and artwork
-from this fork's sources in `mods/the-finals/`. The nxdk adapter reads each
-physical controller separately and applies equipment and movement to that
-player in the native game. Changes to those shared sources trigger a rebuild.
-Changes to Windows-only hooks need a corresponding native Xbox implementation.
+Windows and Xbox compile the same movement, aim, wheel and equipment sources from `port/controls/`. Each local player has independent input and equipment state. The optional Windows GE32 extension keeps its executable-specific integration in `mods/the-finals/`.
 
-Complex supports two-player local play. Quick slap and hit bars still need native Xbox support.
+In native Xbox and Windows gameplay, click the right stick to slap with Bond’s palm. After the strike, Bond returns to the equipped weapon. Xbox multiplayer shows an eight-cell health meter above an opponent you damage. A new hit refreshes the 3.25-second hold, followed by a 0.20-second fade.
 
 ### Host Complex on a wired LAN
 
-The NTSC-U Windows port can host an original Xbox or another Windows player
-over direct IPv4 UDP. Each player has a full-screen view. Position, facing
-and gait drive the other player's multiplayer character animation. Each
-player starts with a PP7. The host resolves gunfire and sends both players'
-health, armour, deaths, kills and respawns to the client. The host also
-awards stage pickups and replicates their visibility, weapon ownership,
-reserve rounds and magazines.
+The NTSC-U Windows port and original Xbox port can host each other over direct
+IPv4 UDP. Windows can also host another Windows player. Each player has a
+full-screen view. Position, facing and gait drive the other player's
+multiplayer character animation. Each player starts with a PP7. The host
+resolves gunfire and sends both players' health, armour, deaths, kills and
+respawns to the client. The host also awards stage pickups and replicates
+their visibility, weapon ownership, reserve rounds and magazines.
 The separate GE32 release uses a different multiplayer implementation.
 
 The Windows host uses LB for the fork equipment wheel. Hold LB, move the
@@ -128,23 +123,38 @@ their own equipment.
 1. Connect both machines to the same LAN. On Windows, build this revision
    with `./build-pc.sh ntsc-final` and prepare the US ROM and desktop asset
    sidecars as described in `docs/building.md`, or use a prepared Windows
-   bundle. Run `ge007.x86_64.exe --lan-host` in the game directory, or select **Multiplayer → LAN Multiplayer → Host Match** in the Windows dossier. The
+   bundle. Run `ge007.x86_64.exe --lan-host` in the game directory, or select **LAN Multiplayer**, then **Host Match** in the Windows dossier. The
    host waits for a client on UDP 27007. Connect the Windows controller
    before launch. Build and install both executables from the same revision.
    If the host logs `rejected peer build`, compare the two builds.
-2. The Windows host shows the IPv4 address to enter on Xbox. If it shows
-   both Ethernet and Wi-Fi, use the connection on the same LAN as the Xbox. If
-   Windows Firewall prompts, allow the game on the Private network profile.
-3. On Xbox, pick a dossier, then **LAN MULTIPLAYER**. Use D-pad left or right
-   to select an octet and up or down to change it. Hold LT to step by ten.
-   Press A to join, or B to go back. The host and client enter a two-player,
-   bot-free Complex match after the handshake. Use controller port 1.
+2. If Windows Firewall prompts, allow the game on the Private network profile.
+   The host remains joinable while its waiting screen is visible.
+3. On Xbox, pick a dossier, then **LAN MULTIPLAYER Ã¢â€ â€™ JOIN MATCH**. Select the
+   discovered host and press A. The list shows its match name, arena, occupancy
+   and endpoint. **Refresh** clears stale entries and searches again. If the
+   host is not listed, choose **Enter IP manually**; use D-pad left or right to
+   select an octet, up or down to change it, and hold LT to step by ten. The
+   host and client enter a two-player, bot-free Complex match after the
+   handshake. Use controller port 1.
 4. At spawn, stand still on Xbox while the Windows player moves across its
    view and turns. Swap roles. Repeat from a fresh launch after unplugging
    only the router's WAN cable. Record each build and both screens. The
-   first multiplayer row, **Local Multiplayer**, starts split-screen play.
+   third dossier option, **Local Multiplayer**, starts split-screen play.
 
-A second Windows player can use **Multiplayer → LAN Multiplayer → Join Match** or join with `ge007.x86_64.exe --lan-join HOST_IPV4`.
+To reverse the roles, choose **LAN MULTIPLAYER Ã¢â€ â€™ HOST MATCH** on Xbox. Its
+wired IPv4 address appears while it waits on UDP 27007. On Windows, choose
+**LAN Multiplayer**, then **Join Match** and enter that address, or run
+`ge007.x86_64.exe --lan-join XBOX_IPV4`. The Xbox is then authoritative for
+hits, kills, pickups, scores and rematches. This remains a two-player,
+one-versus-one match with no bots.
+
+On physical hardware, an original Xbox displayed its wired address, accepted
+the Windows client, entered Complex and retained player-one movement, camera
+and PP7 fire while hosting. Both machines rendered their own full-screen view.
+The paired desktop regression then covered kills, deaths, respawns, reconnect,
+pickup contention, both rematch winners and death drops in both directions.
+
+A second Windows player can use **LAN Multiplayer**, then **Join Match** or join with `ge007.x86_64.exe --lan-join HOST_IPV4`.
 The host defaults to Complex. Use `--lan-map Temple` to select another arena.
 The host also sets the winning score. The default is five points. Use
 `--lan-score-limit 1` for a one-point match, or zero for unlimited play.
@@ -152,7 +162,7 @@ After a win, both players press Start on their results screens for a rematch.
 The physical Xbox joined a Windows host and fired on all eleven retail arenas.
 Temple reached its pistol HUD after the portal-table fix. On the other ten
 arenas the Xbox rejoined after each host restart and Windows recorded gunfire
-from both seats. In Complex the Xbox displayed a 1–0 result, accepted Start
+from both seats. In Complex the Xbox displayed a 1Ã¢â‚¬â€œ0 result, accepted Start
 for a rematch and fired in the new round. Install the
 paired `default.xbe` and `xbox.bin` from the same Xbox build.
 To repeat the Complex firefight regression on one Windows PC, run
@@ -197,7 +207,7 @@ selection function with the Xbox input path and exercises the Xbox release
 window, cancel, empty grenades and independent controllers.
 
 ```sh
-c++ -std=c++20 -Ibuild-xbox/core/finals $(sdl2-config --cflags) \
+c++ -std=c++20 $(sdl2-config --cflags) \
     port/xbox/tests/wheel.cpp $(sdl2-config --libs) -o build-xbox/wheel-test
 build-xbox/wheel-test
 ```
@@ -345,7 +355,7 @@ Each split-screen player has a cached equipment-wheel texture. A change in
 selection, ammo, owned items or viewport size refreshes the artwork. The NV2A
 blends it over the current view each frame.
 
-A physical Xbox comparison used NTSC 640×480, two players in Complex, a fixed
+A physical Xbox comparison used NTSC 640Ãƒâ€”480, two players in Complex, a fixed
 spawn seed and the same scripted inputs on each build. Each measurement covers
 seven seconds after the one-second transition. Frame times include the game
 loop and renderer, sampled at consecutive frame completions.

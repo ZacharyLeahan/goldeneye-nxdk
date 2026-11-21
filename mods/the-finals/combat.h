@@ -4,8 +4,7 @@
 #define HB(hand,off) (*(signed char*)((unsigned char*)CURRENT+3208+(hand)*1976+(off)))
 static volatile LONG sprintClicks,slapRequests;
 static int combatButtonHeld[2],sprintLatched,sprintOn;
-#define MOVE_RUN_SCALE 1.15f
-#define MOVE_SPRINT_RATIO 1.46f /* native gait is nonlinear; calibrated in-engine */
+#include "../../port/controls/finals_constants.h"
 static float sprintBlend;
 static void*combatPlayer;static int combatStage,combatTimer;
 static int padSuspendForSlap(void);

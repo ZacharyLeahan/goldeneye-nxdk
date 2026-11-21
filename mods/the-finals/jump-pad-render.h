@@ -3,7 +3,7 @@
 static unsigned padRubberTexture;
 static void padMaterial(void){
  if(padRubberTexture)return;unsigned char pixels[32*32*3];
- for(int y=0;y<32;y++)for(int x=0;x<32;x++){unsigned seed=(unsigned)(x*113+y*197+x*y*31);int ridge=y%4,light=ridge==0?13:ridge==1?48:30;light+=(seed%5)*2;int arrow=(y>=7&&y<=15&&abs(x-16)<=y-7)||(y>=15&&y<=25&&x>=13&&x<=19);if(arrow&&seed%13)light=139+(seed%4)*9;int i=(y*32+x)*3;pixels[i]=(unsigned char)light;pixels[i+1]=(unsigned char)(light+3);pixels[i+2]=(unsigned char)(light>80?light-22:light-3);}
+#include "../../port/controls/finals_material.inc"
  glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);glPixelStorei(GL_UNPACK_ALIGNMENT,1);glPixelStorei(GL_UNPACK_ROW_LENGTH,0);glPixelStorei(GL_UNPACK_SKIP_ROWS,0);glPixelStorei(GL_UNPACK_SKIP_PIXELS,0);glGenTextures(1,&padRubberTexture);glBindTexture(GL_TEXTURE_2D,padRubberTexture);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,0x812F);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,0x812F);glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,32,32,0,GL_RGB,GL_UNSIGNED_BYTE,pixels);glPopClientAttrib();
 }
 static void padVertex(const float p[3],float vw,float vh){float d=p[2];glVertex4f(p[0]*vw*d,p[1]*vh*d,0,d);}
@@ -25,10 +25,7 @@ static void padFace(const float p[24][3],float vw,float vh,int ghost,int valid,f
   glColor4f(valid?.65f:.92f,valid?.82f:.27f,valid?.40f:.17f,.75f);glLineWidth(fmaxf(1,uiScale));glBegin(GL_LINE_LOOP);for(int i=0;i<8;i++)padVertex(p[i],vw,vh);glEnd();
  }
 }
-static void padHeldFace(float out[24][3],float vw,float vh,float blend){
- float ease=1-(1-blend)*(1-blend),cx=vw*.75f,cy=vh-55+(1-ease)*180;
- for(int i=0;i<8;i++){float a=6.28318530718f*(i+.5f)/8,x=cosf(a),y=sinf(a);out[i][0]=(cx+128*x+36*y)/vw;out[i][1]=(cy+62*y-18*x)/vh;out[i][2]=1+.13f*y;out[i+8][0]=(cx+124*x+35*y)/vw;out[i+8][1]=(cy+62*y-18*x+19)/vh;out[i+8][2]=out[i][2];out[i+16][0]=(cx+92*x+26*y)/vw;out[i+16][1]=(cy+45*y-13*x-6)/vh;out[i+16][2]=out[i][2];}
-}
+#include "../../port/controls/finals_held.inc"
 static void drawPad(void*w){
  static int debug,wasDown;int down=(GetAsyncKeyState(VK_F8)&0x8000)!=0;if(down&&!wasDown){debug=!debug;InterlockedExchange(&mantleDebugEnabled,debug);}wasDown=down;
  if(!playing())return;PadSnapshot s=padSnapshot();if(!debug&&!getenv("GE32_MANTLE_TEST")&&!s.carrying&&!s.visible&&s.carryBlend<=0)return;

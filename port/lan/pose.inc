@@ -22,6 +22,7 @@ void lanEnterRound(void)
     lanResetDrops();
     roundReloading = resultsLogged = lanWantsRespawn = 0;
     previousPeer = lanPeerId();
+    lanSlapPress = lanConsumedSlap = 0;
     lanButtons = lanTriggerPress = lanConsumedTrigger = 0;
     for (int i = 0; i < 2; ++i) {
         lanLife[i] = 1;
@@ -112,6 +113,7 @@ void lanTickSeat(void)
                              lanSpawn[1].x, lanSpawn[1].z);
 #endif
         }
+        mpClearTargetHits();
         previousPeer = lanPeerId();
         lanConsumedTrigger = 0;
     }
@@ -141,6 +143,12 @@ void lanTickSeat(void)
             p->bondarmour = s->armour;
             p->deathcount = s->deaths;
             if (appliedPacket[slot] != packet) {
+                if (slot == 1) {
+                    TargetHit *hit = &targetHits[0][1];
+                    hit->expires = remote.guestHitTicks && remote.guestHitTicks <= HIT_TOTAL_TICKS
+                        ? g_GlobalTimer + remote.guestHitTicks : 0;
+                    hit->previousHealth = fmaxf(0, fminf(1, remote.guestHitPreviousHealth));
+                }
                 if (!slot) {
                     lanApplyPickups(&remote);
                     lanApplyDrops(&remote);
@@ -199,13 +207,19 @@ void lanTickSeat(void)
                     p->field_488.collision_position.z, p->vv_theta, p->vv_verta,
                     p->speedforwards, p->speedsideways, p->headanim != 0};
     pose.buttons = p->bonddead ? lanWantsRespawn : lanButtons;
+    pose.slapPress = lanSlapPress;
     pose.triggerPress = lanTriggerPress;
     pose.results = g_gameOverFlag != 0;
     pose.ready = ready;
-    pose.weapon = getCurrentPlayerWeaponId(GUNRIGHT);
+    pose.weapon = xboxLives[0].slap.phase ? xboxLives[0].slap.weapon[GUNRIGHT] : getCurrentPlayerWeaponId(GUNRIGHT);
     if (pose.weapon > 255) pose.weapon = 0;
     pose.life = lanSpawnReady[0] ? lanLife[0] : 0;
     if (lanIsHost()) {
+        const TargetHit *guestHit = &targetHits[1][0];
+        if (guestHit->expires > g_GlobalTimer) {
+            pose.guestHitTicks = guestHit->expires - g_GlobalTimer;
+            pose.guestHitPreviousHealth = guestHit->previousHealth;
+        }
         lanPickupPage(&pose);
         lanReadDrops(&pose);
         for (int i=0; i<2; ++i) {

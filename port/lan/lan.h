@@ -1,10 +1,18 @@
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
 enum { LAN_PORT = 27007 };
 enum { LAN_COMPLEX = 2, LAN_ARENAS = 11 };
+enum { LAN_DISCOVERY_MAX = 8 };
+typedef struct {
+    char name[33], address[16];
+    uint32_t id;
+    uint16_t port;
+    uint8_t arena, players, capacity;
+} LanMatch;
 /* Scoped to the game thread while it builds the discarded LAN seat. */
 extern int lanSkipViewDraw;
 int lanArena(void);
@@ -35,11 +43,13 @@ typedef struct {
 } LanSeat;
 typedef struct {
     float x, feet, z, yaw, pitch, forward, strafe, run;
-    uint32_t buttons, triggerPress, weapon, life, results, ready;
+    uint32_t buttons, triggerPress, slapPress, weapon, life, results, ready;
     LanSeat seats[2]; /* Only the host authors these, in host seat order. */
     uint32_t firstCommand, commands, hidden[LAN_WORLD_WORDS];
     uint32_t activeDrops;
     LanDrop drop;
+    uint32_t guestHitTicks; /* Time remaining on the guest shooter's confirmed hit. */
+    float guestHitPreviousHealth;
 } LanPose;
 void lanResetDrops(void);
 void lanReadDrops(LanPose *state);
@@ -52,6 +62,13 @@ int lanHost(void);
 int lanJoin(const char *ipv4);
 int lanHostOnPort(uint16_t port);
 int lanJoinOnPort(const char *ipv4, uint16_t port);
+int lanDiscover(void);
+int lanDiscovering(void);
+void lanDiscoverRefresh(void);
+int lanDiscoveryCount(void);
+const LanMatch *lanDiscoveryMatch(int index);
+int lanJoinDiscovered(int index);
+int lanLocalAddress(char *text, size_t size);
 void lanClose(void);
 int lanActive(void);
 int lanIsHost(void);

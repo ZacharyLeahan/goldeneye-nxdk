@@ -324,20 +324,21 @@ D578,PARTIAL,Windows LAN host uses the fork controls and equipment wheel.,"PARTI
 D579,FIXED,LAN remote players slide with idle legs in Complex.,FIXED (confirmed in a Windows-hosted match on a physical Xbox)
 D580,FIXED,The Xbox renderer turns the remote player into a black silhouette in Complex.,FIXED (same-scene fog comparison on a physical Xbox)
 D581,?,"Complex LAN firefight, kill credit and respawn.",VERIFIED (Windows host and physical Xbox fired in both directions)
-D582,PARTIAL,"Authoritative stage pickups, ammo and arena selection.","Physical Xbox fired on every arena and won a Complex ammo contest"
-D583,VERIFIED,"Host score limits, two-player rematch and process restart.","Verified on Windows and in a physical Xbox rematch after a Windows win"
-D584,FIXED,Special portal scan uses a linker-dependent end address.,FIXED (physical Xbox reached Temple and fired)
-D585,VERIFIED,LAN death drops retain their world position and pickup ownership on both seats.,Verified collection in both directions with a physical Xbox guest
-D586,?,Windows split-screen routes the fork controls and equipment wheel to each local seat.,VERIFIED on all retail arenas with Windows scripted seats and on physical Xbox with two controllers in Complex
+D582,PARTIAL,"Authoritative stage pickups, ammo and arena selection.","PARTIAL (Windows arena and pickup tests passed, physical Temple load stalls)"
+D583,OPEN,"Host score limits, two-player rematch and process restart.",VERIFIED on Windows (physical Xbox pending)
+D584,FIXED,Special portal scan uses a linker-dependent end address.,FIXED in downstream Windows and Xbox builds (physical Temple retest pending)
+D585,OPEN,LAN death drops retain their world position and pickup ownership on both seats.,VERIFIED on Windows (physical Xbox pending)
+D586,?,Windows split-screen routes the fork controls and equipment wheel to each local seat.,VERIFIED with scripted local seats on all retail arenas
 D587,FIXED,A rearmed controller-init timer could be cleared by its previous firing.,FIXED in the platform timer shim (24 cold Windows boots passed)
-D588,VERIFIED,Egypt LAN rendering cost depends on visible geometry.,Physical Egypt comparison and normal Xbox replay
-D589,MEASURED,Egypt LAN repeats occur before the next surface is ready.,Two physical traces at the same native camera
-D590,MEASURED,Skip draw-only work in the unused LAN seat.,Physical Egypt A/B
-D591,MEASURED,Visible Egypt display-list cost and scheduling headroom.,Xbox refresh phase samples and early graphics wake A/B
-D592,FIXED,LAN sky inherited the previous fill color.,Restore multiplayer viewport fill and scissor state
-D593,MEASURED,Retain triangle material across vertex loads in Egypt LAN.,Two matched Xbox firefights measured lower list cost
-D594,MEASURED,Trace TRI4 culling at the heavy Egypt LAN camera.,Projected coordinate reuse left 33 ms frames unchanged
-D595,FIXED,Accept the audio/graphics pair on the early Egypt LAN wake.,Measured 59.13 vs 50.00 displayed FPS in the physical A/B
+D588,?,Egypt LAN rendering cost depends on visible geometry.,VERIFIED (physical Egypt comparison and normal Xbox replay)
+D589,?,Egypt LAN repeats occur before the next surface is ready.,MEASURED (two physical traces at the same native camera)
+D590,?,Skip draw-only work in the unused LAN seat.,MEASURED (physical Egypt A/B)
+D591,?,Profile visible Egypt draws and wake the graphics scheduler at submission.,MEASURED (Xbox LAN)
+D592,FIXED,Restore the full-screen LAN sky's inherited fill state.,FIXED
+D593,?,Retain triangle material across vertex loads in the Egypt LAN view.,MEASURED
+D594,?,Trace TRI4 at the heavy Egypt LAN camera and measure projected-coordinate reuse.,MEASURED
+D595,FIXED,Accept a mixed audio/graphics command pair on the early Egypt LAN wake.,FIXED
+D596,FIXED,Discover joinable LAN hosts before asking for an IP address.,FIXED (Windows transport and physical Xbox join)
 D407,CLOSED,Tanks cannot be boarded/exited on PC —,CLOSED (2026-09-28 bookkeeping:
 D408,FIXED,Game.SkipIntro skips the post-mission failure dossier:,FIXED 2026-09-30 (SkipIntro hook gated to first boot; live dossier check owed).
 D415,FIXED,"Shooting a light fixture does not ""kill"" its flickering light (Bunker, Caverns):",FIXED (2026-09-29 bookkeeping:

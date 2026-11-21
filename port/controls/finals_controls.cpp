@@ -52,7 +52,11 @@ struct Wheel {
         return std::find(snapshot.items, snapshot.items + snapshot.count, id) != snapshot.items + snapshot.count;
     }
     void equip(int id) { requested = id; }
+    void wheelOpened() {}
+#define WHEEL_METHOD
+#include "wheel_layout.inc"
 #include "finals_selection.inc"
+#undef WHEEL_METHOD
 };
 
 Wheel wheels[4];

@@ -135,8 +135,7 @@ for unit in ("lv", "bg", "model", "spectrum", "image_bank", "objecthandler", "in
                     "if (traversal->mantle.active) move_offset.x = move_offset.z = 0;\n        "
                     "start_collision_pos_x = g_CurrentPlayer->field_488.collision_position.f[0];")
     if unit == "front":
-        # Keep Complex as the downstream default. The Xbox has no campaign
-        # progression to unlock arenas, so enforce their native seat limits.
+        # Keep the Xbox multiplayer arena defaults and native seat limits.
         default = "MP_stage_selected = MP_STAGE_TEMPLE;"
         if src.count(default) != 3:
             raise ValueError("Review upstream multiplayer default and fallback arenas")
@@ -147,7 +146,7 @@ for unit in ("lv", "bg", "model", "spectrum", "image_bank", "objecthandler", "in
                     "current_mp_stage_highlighted = MP_stage_selected;")
         src = adapt(src, "if (isGunBarrelInMode2())\n    {\n        frontChangeMenu(MENU_EYE_INTRO, TRUE);",
                     "if (isGunBarrelInMode2())\n    {\n        frontChangeMenu(is_first_time_on_main_menu ? MENU_EYE_INTRO : MENU_FILE_SELECT, TRUE);")
-        src = multiplayer_menu(src, xbox=True)
+        src = multiplayer_menu(src)
     if unit == "loadobjectmodel":
         # The PORT branch hardcodes LP64 setup-record sizes. The original
         # ILP32 switch walks the exact record layout emitted by assets.py.
@@ -155,6 +154,8 @@ for unit in ("lv", "bg", "model", "spectrum", "image_bank", "objecthandler", "in
         if src.count(anchor) != 1:
             raise ValueError("Review upstream sizepropdef layout")
         src = src.replace(anchor, anchor.replace("#ifdef PORT", "#if 0"))
+        src = adapt(src, "case PROPDEF_OBJECTIVE_COPY_ITEM:\n            return 1;",
+                    "case PROPDEF_OBJECTIVE_COPY_ITEM:\n            return 3;")
     if unit == "spectrum":
         src = src.replace("#define spec_keyboard_row_caps_z_x_c_v spec_keyboard_buffer",
                           "#define spec_keyboard_row_caps_z_x_c_v spec_keyboard_buffer[0]")
@@ -183,6 +184,3 @@ rsp = adapt(rsp, "        case G_MW_SEGMENT:\n", "        case G_MW_SEGMENT:\n  
 # CI8 LoadBlock can exceed the cropped base mip. Stop at the last base texel.
 rsp = adapt(rsp, "k < line_size_bytes; i++, k++, j++", "k < line_size_bytes && i < size_bytes; i++, k++, j++")
 emit("gfx_pc.cpp", rsp)
-
-from finals_sources import generate
-generate(repo, lambda name, source: emit("finals/" + name, source))

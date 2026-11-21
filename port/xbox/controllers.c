@@ -3,7 +3,7 @@
 #include <PR/os.h>
 #include "controllers.h"
 #include "port/lan/lan.h"
-#include "finals_controls.h"
+#include "../controls/finals_controls.h"
 
 static FinalsPad finalsPads[MAXCONTROLLERS];
 static SDL_SpinLock finalsLock;

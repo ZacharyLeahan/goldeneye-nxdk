@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 
-def generate(source, *, xbox):
+def generate(source):
     def replace(before, after):
         nonlocal source
         if source.count(before) != 1:
@@ -21,25 +21,9 @@ def generate(source, *, xbox):
         return frontDrawCursor(DL);
     }
 """ + draw)
-    if not xbox:
-        # A lone player can enter Multiplayer to join a LAN session. Local
-        # options still enforce the native minimum when that row is selected.
-        replace("else if ((243.0f <= cursor_v_pos) && (joyGetControllerCount() >= 2))",
-                "else if (243.0f <= cursor_v_pos)")
-        gate = """    if (joyGetControllerCount() >= 2)
-    {
-        text_color = 0xFF;
-    }
-    else
-    {
-        text_color = 0x70;
-    }"""
-        replace(gate, "    text_color = 0xFF;")
-        transition = "            gamemode = GAMEMODE_MULTI;\n            sndPlaySfx(g_musicSfxBufferPtr, DOOR_METAL_CLOSE_SFX, 0);"
-        replace(transition, transition.replace("gamemode = GAMEMODE_MULTI;", "openMultiplayerPage(MULTIPLAYER);") + "\n            return;")
     return source
 
 
 if __name__ == "__main__":
     src, dst = map(Path, sys.argv[1:])
-    dst.write_text(generate(src.read_text(), xbox=False))
+    dst.write_text(generate(src.read_text()))

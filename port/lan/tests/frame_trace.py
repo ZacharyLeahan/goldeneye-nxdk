@@ -146,7 +146,10 @@ def summarize(path, boot=False):
         elif name == "list_end":
             renders[frame][name] = t
             renders[frame]["draw_ticks"] = arg
-        elif name in ("shots", "triangles"):
+        elif name == "shots":
+            renders[frame][name] = arg & 0xffffffff
+            renders[frame]["throws"] = arg >> 32
+        elif name == "triangles":
             renders[frame][name] = arg
         else:
             renders[frame][name] = t
@@ -353,7 +356,8 @@ def summarize(path, boot=False):
     for a,b in zip(("render","acquired","drain","idle","queue"),("acquired","drain","idle","queue","ready")):
         print(f"{a}->{b} {ms(mean(r[b]-r[a] for _,r in complete)):.3f} ms")
     print("Triangles/frame", round(mean(r["triangles"] for _,r in complete)),
-          "shots during capture", complete[-1][1]["shots"]-complete[0][1]["shots"])
+          "shots during capture", complete[-1][1]["shots"]-complete[0][1]["shots"],
+          "grenade throws", complete[-1][1].get("throws", 0)-complete[0][1].get("throws", 0))
     valid = set(ids)
     joined = [j for j,(_,i,_) in enumerate(scans) if i in valid]
     if not joined:

@@ -2,10 +2,14 @@
 
 from pathlib import Path
 import re
+import sys
 import struct
 import zlib
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "tools_pc"))
+from d88_propdefs import PROPDEF_N64_WORDS, OBJ_TAIL_DESC
+
 MASK = 0xffffff
 
 
@@ -192,9 +196,12 @@ def pack(rom):
     geometry = ("dish", "ref", "oat", "ame", "ark", "sevb", "arch", "cave", "cryp")
     file_table = (REPO / "assets/obseg/file_resource_table.inc.c").read_text()
     bg_symbols = dict(re.findall(r'"bg/bg_(\w+)_all_p\.seg",\s*&(\w+)', file_table))
-    stages = [(bg_symbols[tag], background) for tag in geometry]
-    stages += [(f"Tbg_{tag}_all_p_stanZ", collision) for tag in geometry]
-    stages += [(f"Ump_setup{tag}Z", multiplayer_setup) for tag in (*geometry, "imp", "ash")]
+    stages = [(name, background) for name in dict.fromkeys(bg_symbols.values())
+              if symbols["end_" + name] > symbols[name] or name == bg_symbols["ame"]]
+    stages += [(name, collision) for name in symbols if name.startswith("Tbg_")
+               and symbols["end_" + name] > symbols[name]]
+    stages += [(f"Ump_setup{tag}Z", stage_setup) for tag in (*geometry, "imp", "ash")]
+    stages += [(name, stage_setup) for name in symbols if name.startswith("Usetup") and name.endswith("Z")]
     for name, convert in stages:
         start, stop = symbols[name], symbols["end_" + name]
         if name == bg_symbols["ame"] and stop == start:
@@ -260,7 +267,7 @@ def collision(src):
     return r.dst
 
 
-def multiplayer_setup(src):
+def stage_setup(src):
     r = Records(src)
     tables = [r.read(4 * i) for i in range(10)]
     r.swap(0, 4, 10)
@@ -292,22 +299,28 @@ def multiplayer_setup(src):
         tag = r.read(p)
         n = (3, 4, 4, 8, 2, 2, 10, 3, 2, 1)[tag]
         r.swap(p, 4, n)
+        if tag == 6:  # camera language index is a pair of u16s
+            r.swap(p + 28, 2, 2)
         if tag == 9:
             break
         p += n * 4
     p = tables[3]
     while p:
         tag = src[p + 3]
-        # N64 / Xbox ILP32 word counts from sizepropdef, shared by all retail
-        # multiplayer stages. Mixed-width door words follow DoorRecord.
-        words = {1: 64, 2: 2, 3: 32, 8: 34, 10: 64, 12: 32, 20: 45,
-                 21: 34, 42: 32, 47: 37, 48: 1}[tag]
+        words = PROPDEF_N64_WORDS[tag]
         r.swap(p, 4, words)
         r.dst[p + 2:p + 4] = src[p + 2:p + 4]
         r.swap(p, 2)
         if tag == 48:
             break
-        if tag == 2:  # DoorScaleRecord has only the header and a 32-bit scale.
+        if tag == 9:  # GuardRecord
+            r.swap(p + 4, 2, 10)
+        elif tag == 18:  # SetGuardAttribute
+            r.swap(p + 8, 2)
+            r.dst[p + 10:p + 12] = src[p + 10:p + 12]
+        elif tag == 22:  # TagRecord
+            r.swap(p + 4, 2, 2)
+        if tag not in (1, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 17, 20, 21, 36, 39, 40, 42, 43, 45, 47):
             p += 4 * words
             continue
         r.swap(p + 4, 2, 2)
@@ -315,8 +328,11 @@ def multiplayer_setup(src):
         if tag == 8:
             r.dst[p + 128:p + 130] = src[p + 128:p + 130]
             r.swap(p + 130, 2)
-        if tag == 20:
-            r.swap(p + 128, 2, 26)
+        if tag in OBJ_TAIL_DESC:
+            for word in OBJ_TAIL_DESC[tag][1]:
+                r.swap(p + word * 4, 2, 2)
+        if tag == 11:  # MultiMonitor.ImageNums
+            r.dst[p + 592:p + 596] = src[p + 592:p + 596]
         if tag == 1:
             r.swap(p + 38 * 4, 2, 2)
             r.dst[p + 47*4:p + 47*4+2] = src[p + 47*4:p + 47*4+2]

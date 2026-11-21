@@ -41,10 +41,11 @@ def adapt(unit, source, *, xbox=False):
         replace("end = (u8 *)&g_BgCurrentRoom;", "end = specialportalarray + sizeof(specialportalarray);")
         replace("} while ((u32)ptr < (u32)end);", "} while (ptr < end);")
     elif unit == "bondview2":
+        replace("#undef ZERO_7F08991C", "mpConfirmTargetHit(playerid, get_cur_playernum());\n#undef ZERO_7F08991C")
         replace("if (joyGetButtons(get_cur_playernum(), 0xB000))",
                 "if (lanRespawnButton(joyGetButtons(get_cur_playernum(), 0xB000)))")
         respawn_end = "currentPlayerStartChrFade(120.0f, 1.0f);\n}"
-        replace(respawn_end, "currentPlayerStartChrFade(120.0f, 1.0f);\n    lanNewLife();\n}")
+        replace(respawn_end, "currentPlayerStartChrFade(120.0f, 1.0f);\n    lanNewLife();\n    mpClearSeatHits(get_cur_playernum());\n}")
         replace("f32 damage_dealt = g_playerPerm->handicap * damage_amount;",
                 "if (lanActive() && !lanIsHost()) return;\n    f32 damage_dealt = g_playerPerm->handicap * damage_amount;")
         # Supply motion to the original third-person animation selector only.
@@ -68,7 +69,8 @@ def adapt(unit, source, *, xbox=False):
         }
 """ + selector + source[end:]
         entry = "void MoveBond(s8 stick_x, s8 stick_y, u16 buttons, u16 oldbuttons)"
-        replace(entry, '#include "port/xbox/core/finals_game.inc"\n'
+        replace(entry, '#include "port/controls/finals_game.inc"\n'
+                       '#include "port/lan/target_hits.inc"\n'
                        '#include "port/lan/pose.inc"\n' + entry)
         replace("bondviewProcessInput(stick_x, stick_y, buttons, oldbuttons);",
                 controls + "xboxFinalsProcessInput(stick_x, stick_y, buttons, oldbuttons);" +
@@ -179,6 +181,9 @@ unsigned xboxProfileGame(int *stage, int *shots, unsigned *throws)
                              ("DL = bgLevelRender(DL);", "FT_BG")):
             replace(token, f"ftRecord({event}, ftGameId, get_cur_playernum());\n            " + token)
         replace("DL = bgLevelRender(DL);", "DL = bgLevelRender(DL);\n            ftRecord(FT_AFTER_BG, ftGameId, get_cur_playernum());")
+        replace("    g_GlobalTimer = 0;", "    g_GlobalTimer = 0;\n    extern void mpClearTargetHits(void);\n    mpClearTargetHits();")
+        if xbox:
+            replace("DL = mp_watch_menu_display(DL);", "extern Gfx *mpDrawTargetHits(Gfx *);\n            DL = mpDrawTargetHits(DL);\n            DL = mp_watch_menu_display(DL);")
         anchor = "DL = mp_watch_menu_display(DL);"
         replace(anchor, anchor + "\n            ftRecord(FT_SEAT_END, ftGameId, ((uint64_t)get_cur_playernum() << 32) | (uint32_t)((char *)DL - (char *)viewStart));" +
                 "\n            if (lanActive() && get_cur_playernum() != 0) DL = viewStart;" +

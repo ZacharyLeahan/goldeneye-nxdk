@@ -75,7 +75,7 @@ The wheel does not pause gameplay. Fire and look input are suppressed while sele
 - retro-ui.h: original 5x7 pixel lettering shared by the gadget and target gauges.
 - grenades.h: once-per-life native grenade loadout and total ammunition.
 - grenades-test.h: native equip/throw/depletion and equipment round-trip acceptance.
-- wheel-layout.h: fixed right/bottom gadget quadrants, upper/left gun sectors.
+- `../../port/controls/wheel_layout.inc`: fixed right/bottom gadget quadrants, upper/left gun sectors.
 - wheel-render.h: production renderer, font atlas, vector silhouettes, translucent layout.
 - preview.c: hidden-window visual test using the production renderer.
 - patch-character-back.py: reversible standard character-menu B-back patch.
