@@ -200,7 +200,7 @@ def pack(rom):
               if symbols["end_" + name] > symbols[name] or name == bg_symbols["ame"]]
     stages += [(name, collision) for name in symbols if name.startswith("Tbg_")
                and symbols["end_" + name] > symbols[name]]
-    stages += [(f"Ump_setup{tag}Z", stage_setup) for tag in (*geometry, "imp", "ash")]
+    stages += [(f"Ump_setup{tag}Z", stage_setup) for tag in (*geometry, "imp", "ash", "statue")]
     stages += [(name, stage_setup) for name in symbols if name.startswith("Usetup") and name.endswith("Z")]
     for name, convert in stages:
         start, stop = symbols[name], symbols["end_" + name]

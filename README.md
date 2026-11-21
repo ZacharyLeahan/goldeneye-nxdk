@@ -21,6 +21,8 @@ Our goals are easy couch play and private LAN cross-play, a shared modern contro
 | **LAN Multiplayer** | Use matching builds on the same LAN. Pick **Host Match** on either machine. On the other, pick **Join Match** and select the host. **Enter IP manually** is also available. | Original Xbox and Windows have each hosted a two-player match in Complex. [Host discovery](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/23) · [Xbox hosting](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/24) |
 | **Local Multiplayer** | Connect controllers, choose an arena and rules in Multiplayer Options, then press Start. | Windows and Xbox support 2–4 players on one screen. Four-player combat was tested in Complex on Windows and across all eleven arenas on original Xbox. |
 
+**Statue Park on Windows and original Xbox.** In a two-player local match, open the arena picker and select **Statue Park** below the photo grid. This bonus arena uses the multiplayer layout from your US cartridge.
+
 **Try the bot prototype.** Connect two controllers, highlight **Local Multiplayer**, and press **D-pad right** to start Facility with one computer opponent. Both players keep their own half of the screen. Press **A** on the same row for the regular couch setup.
 
 ## Build and play from Windows

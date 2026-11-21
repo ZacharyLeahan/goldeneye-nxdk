@@ -173,6 +173,7 @@ for unit in ("radar", "chraction", "lv", "bg", "model", "spectrum", "image_bank"
                     "if (traversal->mantle.active) move_offset.x = move_offset.z = 0;\n        "
                     "start_collision_pos_x = g_CurrentPlayer->field_488.collision_position.f[0];")
     if unit == "front":
+        src = multiplayer_menu(src)
         # The Xbox local arena menu supports four physical controllers.
         for level, limit in (("BUNKER2", 3), ("ARCHIVES", 3), ("CAVERNS", 3), ("EGYPT", 2)):
             src = adapt(src, f"SP_LEVEL_{level}, 1, {limit}}}", f"SP_LEVEL_{level}, 1, 4}}")
@@ -181,12 +182,11 @@ for unit in ("radar", "chraction", "lv", "bg", "model", "spectrum", "image_bank"
             raise ValueError("Review upstream multiplayer default and fallback arenas")
         src = src.replace(default, "MP_stage_selected = MP_STAGE_COMPLEX;")
         check = "if (multi_stage_setups[stage].unlock_after == -1)"
-        src = adapt(src, check, "if (stage >= MP_STAGE_RANDOM && stage <= MP_STAGE_EGYPT)")
+        src = adapt(src, check, "if (stage >= MP_STAGE_RANDOM && stage < (s32)(sizeof(multi_stage_setups) / sizeof(multi_stage_setups[0])))")
         src = adapt(src, "current_mp_stage_highlighted = MP_STAGE_RANDOM;",
                     "current_mp_stage_highlighted = MP_stage_selected;")
         src = adapt(src, "if (isGunBarrelInMode2())\n    {\n        frontChangeMenu(MENU_EYE_INTRO, TRUE);",
                     "if (isGunBarrelInMode2())\n    {\n        frontChangeMenu(is_first_time_on_main_menu ? MENU_EYE_INTRO : MENU_FILE_SELECT, TRUE);")
-        src = multiplayer_menu(src)
     if unit == "loadobjectmodel":
         # The PORT branch hardcodes LP64 setup-record sizes. The original
         # ILP32 switch walks the exact record layout emitted by assets.py.
