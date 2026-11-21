@@ -191,3 +191,15 @@ Two classes:
   pass) adds instrumented clock-event logging when used alongside it, for
   diffing two runs to localize remaining divergence. Both env-gated,
   default off, zero cost when unset.
+
+## Fork multiplayer and rendering probes
+
+| Environment variable | Source | Purpose |
+| --- | --- | --- |
+| `GE_FRAME_TRACE`, `GE_FRAME_TRACE_BOOT` | `port/lan/frame_trace.c` | Enable frame tracing during the fixture or boot. |
+| `GE_LAN_DRAW_AB`, `GE_WAKE_AB`, `GE_MATERIAL_AB`, `GE_TRI4_AB`, `GE_PAIR_AB` | `port/lan/frame_trace.c` | Select the draw, scheduler handoff, material, packed-triangle or paired comparison in the frame trace. |
+| `GE_LAN_TEST_DROP`, `GE_LAN_TEST_PICKUP` | `port/lan/pose.inc`, `port/lan/tests/pickup_fixture.inc` | Enable the item drop and pickup test fixtures. |
+| `GE_LAN_TRACE` | `port/lan/drops.inc`, `port/lan/pose.inc` | Log LAN drop and pose events. |
+| `GE_MP_ROSTER_TRACE` | `port/src/simulant_probe.c` | Trace the multiplayer roster. |
+| `GE_SPLIT_TRACE` | `port/controls/finals_game.inc` | Trace local split-screen input. |
+| `GE_VERIFY_TRI4_CULL` | `port/fast3d/gfx_pc.cpp` | Compare packed-triangle culling decisions. |
