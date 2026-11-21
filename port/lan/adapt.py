@@ -226,8 +226,7 @@ unsigned xboxProfileGame(int *stage, int *shots, unsigned *throws)
             replace(token, f"ftRecord({event}, ftGameId, get_cur_playernum());\n            " + token)
         replace("DL = bgLevelRender(DL);", "DL = bgLevelRender(DL);\n            ftRecord(FT_AFTER_BG, ftGameId, get_cur_playernum());")
         replace("    g_GlobalTimer = 0;", "    g_GlobalTimer = 0;\n    extern void mpClearTargetHits(void);\n    mpClearTargetHits();")
-        if xbox:
-            replace("DL = mp_watch_menu_display(DL);", "extern Gfx *mpDrawTargetHits(Gfx *);\n            DL = mpDrawTargetHits(DL);\n            DL = mp_watch_menu_display(DL);")
+        replace("DL = mp_watch_menu_display(DL);", "extern Gfx *mpDrawTargetHits(Gfx *);\n            DL = mpDrawTargetHits(DL);\n            DL = mp_watch_menu_display(DL);")
         anchor = "DL = mp_watch_menu_display(DL);"
         if xbox:
             particles = "DL = explosionRenderFlyingParticles(DL);"

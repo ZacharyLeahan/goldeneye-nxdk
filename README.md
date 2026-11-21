@@ -52,7 +52,7 @@ The controls take inspiration from modern shooters like *THE FINALS*. Sprint int
 | Equipment wheel | Hold **LB** on Windows or **White** on Xbox. Point the right stick and release to equip. Right selects grenades, down selects the jump pad, and the other slots hold owned guns. Each player controls their own wheel. |
 | Deploy a jump pad | Equip the pad, aim at a valid floor surface and pull **RT**. Either player can use the placed pad. |
 
-In Xbox multiplayer, damaging an opponent reveals their health above them, with a blue row for armor. Another hit refreshes the meter. It holds for 3.25 seconds and fades over 0.20 seconds.
+In Windows and Xbox multiplayer, damaging an opposing player reveals their health above them, with a blue row for armor. Another hit refreshes the meter. It holds for 3.25 seconds and fades over 0.20 seconds.
 
 ## Performance on Windows and original Xbox
 
