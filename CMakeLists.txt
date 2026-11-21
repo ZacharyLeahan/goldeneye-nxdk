@@ -407,6 +407,11 @@ list(APPEND LIBS "${EXTRA_LIBRARIES}")
 # ----------------------------------------------------------------------------
 # Port layer (shims + software RSP).
 file(GLOB_RECURSE SRC_PORT      "${CMAKE_SOURCE_DIR}/port/src/*.c")
+# The downstream bot sources and their generated navigation header are added
+# together by simulants.cmake for the targets that integrate them.
+foreach(unit mp_combat mp_roster mp_simulants simulant_probe)
+  list(REMOVE_ITEM SRC_PORT "${CMAKE_SOURCE_DIR}/port/src/${unit}.c")
+endforeach()
 file(GLOB_RECURSE SRC_PORT_CXX  "${CMAKE_SOURCE_DIR}/port/src/*.cpp")
 file(GLOB_RECURSE SRC_FAST3D    "${CMAKE_SOURCE_DIR}/port/fast3d/*.cpp"
                                "${CMAKE_SOURCE_DIR}/port/fast3d/glad/*.c")
