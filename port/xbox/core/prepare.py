@@ -139,7 +139,15 @@ spawn = egypt_camera((repo / "src/game/bondview_r.c").read_text())
 spawn_choice = "rand_pad_index = bondviewGetRandomSpawnPadIndex();"
 emit("bondview_r.c", adapt(spawn, spawn_choice, spawn_choice +
      "\n            extern int xboxCloseSpawnTest(void);\n            if (xboxCloseSpawnTest()) rand_pad_index = 0;"))
-emit("boss.c", adapt_lan("boss", (repo / "src/boss.c").read_text(), xbox=True))
+boss = adapt_lan("boss", (repo / "src/boss.c").read_text(), xbox=True)
+# Enable the measured path only in the two qualified single-player missions.
+boss = adapt(boss, "gdl = lvlRender(gdl);",
+             """int solo = getPlayerCount() == 1 && !lanActive();
+                            ftSetCampaignTuning(solo && (g_StageNum == LEVELID_JUNGLE || g_StageNum == LEVELID_STREETS),
+                                                solo && g_StageNum == LEVELID_JUNGLE,
+                                                solo && g_StageNum == LEVELID_STREETS);
+                            gdl = lvlRender(gdl);""")
+emit("boss.c", boss)
 
 for unit in ("radar", "chraction", "lv", "bg", "model", "spectrum", "image_bank", "objecthandler", "initunk_005450", "loadobjectmodel", "front", "bondview2", "gun", "propobj", "chrprop", "mpmenu"):
     src = (repo / f"src/game/{unit}.c").read_text()

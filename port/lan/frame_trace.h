@@ -4,7 +4,10 @@
 extern "C" {
 #endif
 
-enum { FT_LIST_TIMED = 1, FT_LIST_REUSE_MATERIAL = 2, FT_LIST_TRACE_TRI4 = 4, FT_LIST_PROJECT_TRI4 = 8 };
+enum { FT_LIST_TIMED = 1, FT_LIST_REUSE_MATERIAL = 2, FT_LIST_TRACE_TRI4 = 4, FT_LIST_PROJECT_TRI4 = 8, FT_LIST_COLOR_TABLE = 16, FT_LIST_LOCAL_VERTEX_CURSOR = 32 };
+#ifdef __XBOX__
+void ftSetCampaignTuning(int useColorTable, int wakeGraphics, int localVertexCursor);
+#endif
 
 enum FrameEvent {
     FT_VI = 1, FT_GATE, FT_GAME, FT_BUILD, FT_SEAT, FT_VIS, FT_PROPS,
