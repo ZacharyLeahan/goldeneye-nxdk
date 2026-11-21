@@ -11,11 +11,11 @@ Our goals are easy couch play and private LAN cross-play, a shared modern contro
 | Solo Campaign · Dam | Local Multiplayer · Complex |
 | --- | --- |
 | ![Bond approaching the first checkpoint on Dam](docs/img/dam-solo.jpg) | ![Four split-screen views of a grenade firefight in Complex](docs/img/complex-split-screen.jpg) |
-| Xbox build running in xemu | Four players on one original Xbox |
+| <img src="docs/img/icon/xbox.svg" width="16" height="16" alt=""> Xbox build running in xemu | <img src="docs/img/icon/xbox.svg" width="16" height="16" alt=""> Four players on one original Xbox |
 
 ## Choose a game mode
 
-| Main dossier | Joining a LAN match |
+| <img src="docs/img/icon/windows.svg" width="16" height="16" alt=""> Windows · Main dossier | <img src="docs/img/icon/xbox.svg" width="16" height="16" alt=""> Original Xbox · Joining a LAN match |
 | --- | --- |
 | ![The Windows dossier lists Solo Campaign, LAN Multiplayer and Local Multiplayer in order](docs/img/mode-menu.jpg) | ![The Xbox lists an available GoldenEye host playing Complex with one of two slots filled](docs/img/lan-matches.jpg) |
 
@@ -39,8 +39,8 @@ The launcher opens the finished folders after an interactive build.
 
 | Build | What to do next |
 | --- | --- |
-| **Windows** | Open `build-pc\play` and launch `ge007.x86_64.exe`. Keep its DLLs and `data` folder with it. |
-| **Original Xbox** | Copy all three files from `build-xbox\disc` into one game folder on your Xbox. Launch `default.xbe` from the dashboard. For xemu, load the locally generated `build-xbox\ge007.iso` in a 64 MiB Xbox profile. |
+| <img src="docs/img/icon/windows.svg" width="16" height="16" alt=""> **Windows** | Open `build-pc\play` and launch `ge007.x86_64.exe`. Keep its DLLs and `data` folder with it. |
+| <img src="docs/img/icon/xbox.svg" width="16" height="16" alt=""> **Original Xbox** | Copy all three files from `build-xbox\disc` into one game folder on your Xbox. Launch `default.xbe` from the dashboard. For xemu, load the locally generated `build-xbox\ge007.iso` in a 64 MiB Xbox profile. |
 
 For command-line use, run `build.cmd windows`, `build.cmd xbox`, or `build.cmd both`. In a source checkout or extracted source archive the same script builds that copy. The standalone download fetches its tagged source into a folder beside the launcher. Keep the resulting game and cartridge files private. [Release notes](https://github.com/ZacharyLeahan/goldeneye-nxdk/releases/tag/builder-1.0) · [Manual Windows build](docs/building.md) · [Manual Xbox build](DOWNSTREAM.md#build-and-boot)
 
@@ -48,16 +48,24 @@ For command-line use, run `build.cmd windows`, `build.cmd xbox`, or `build.cmd b
 
 The controls take inspiration from modern shooters like *THE FINALS*. Sprint into a slide, mantle a ledge, or use the equipment wheel to throw a grenade or deploy a jump pad.
 
-| Equipment wheel | Jump pad placement |
+| <img src="docs/img/icon/windows.svg" width="16" height="16" alt=""> Windows | <img src="docs/img/icon/xbox.svg" width="16" height="16" alt=""> Original Xbox (xemu) |
 | --- | --- |
-| ![An original Xbox player highlights grenades on the right side of the radial wheel](docs/img/equipment-wheel.jpg) | ![A Windows player holds a jump pad with a green placement preview on the floor ahead](docs/img/jump-pad.jpg) |
-| Hold the wheel button, point at grenades and release to equip. | Aim at level ground. When the preview turns green, press **RT** to place the pad. |
+| ![Windows equipment wheel showing three guns, three grenades and a jump pad](docs/img/wheel-windows.png) | ![Original Xbox equipment wheel with the same three guns, three grenades and jump pad](docs/img/wheel-xbox.png) |
+| Hold **LB** to open the wheel. | Hold **White** to open the wheel. |
+
+Both players are in Complex with the same pickups. Starting at the lower left and moving clockwise, the guns are the **PP7**, **KF7 Soviet**, and **ZMG**. **Grenades** sit on the right with the remaining count beneath them. The **jump pad** sits at the bottom. Point the right stick at a slot and release the wheel button to equip it.
+
+<img src="docs/img/icon/windows.svg" width="16" height="16" alt=""> **Windows · Placing a jump pad**
+
+![A Windows player holds a jump pad with a green placement preview on the floor ahead](docs/img/jump-pad.jpg)
+
+Aim at level ground. When the preview turns green, press **RT** to place the pad.
 
 ## Controls
 
 The Windows and original Xbox development builds show their own controller on the pause watch. The published **builder-1.0** uses the earlier watch artwork.
 
-| Windows · Xbox Series controller | Original Xbox · Controller S |
+| <img src="docs/img/icon/windows.svg" width="16" height="16" alt=""> Windows · Xbox Series controller | <img src="docs/img/icon/xbox.svg" width="16" height="16" alt=""> Original Xbox · Controller S |
 | --- | --- |
 | ![Windows pause watch with the Xbox Series controller and its button labels](docs/img/controls-windows.jpg) | ![Original Xbox pause watch with Controller S and its button labels](docs/img/controls-xbox.jpg) |
 
@@ -91,10 +99,10 @@ Four-player combat was slowest on Egypt and fastest on Stack. Across the 11 four
 
 | Platform and workload | Measured frame rate |
 | --- | --- |
-| Windows, fixed Egypt camera, two game processes on one PC | **60.00 FPS host / 59.99 FPS guest**. Each rate uses the time between 1,437 consecutive render completions over about 24 seconds. |
-| Original Xbox, same Egypt LAN firefight, 480p | **50.00 → 59.13 displayed FPS** with the scheduler fix. Observed repeated refreshes fell from **113 to 8**. The 95th-percentile display interval fell from 33.33 to 16.67 ms. |
-| Original Xbox, heavy two-player Egypt split-screen | **46.29 displayed FPS** across 925 comparable camera steps with the regular vertex writer. Both players turned, fired and threw grenades. |
-| Original Xbox, four-player local combat on all 11 arenas | **34.07 completed FPS** over 322.79 seconds. The slowest arena was Caverns at 24.5 FPS overall and 17.0 FPS during the grenade window. [Per-arena frame times](DOWNSTREAM.md#four-player-frame-times-on-original-xbox) |
+| <img src="docs/img/icon/windows.svg" width="16" height="16" alt=""> Windows, fixed Egypt camera, two game processes on one PC | **60.00 FPS host / 59.99 FPS guest**. Each rate uses the time between 1,437 consecutive render completions over about 24 seconds. |
+| <img src="docs/img/icon/xbox.svg" width="16" height="16" alt=""> Original Xbox, same Egypt LAN firefight, 480p | **50.00 → 59.13 displayed FPS** with the scheduler fix. Observed repeated refreshes fell from **113 to 8**. The 95th-percentile display interval fell from 33.33 to 16.67 ms. |
+| <img src="docs/img/icon/xbox.svg" width="16" height="16" alt=""> Original Xbox, heavy two-player Egypt split-screen | **46.29 displayed FPS** across 925 comparable camera steps with the regular vertex writer. Both players turned, fired and threw grenades. |
+| <img src="docs/img/icon/xbox.svg" width="16" height="16" alt=""> Original Xbox, four-player local combat on all 11 arenas | **34.07 completed FPS** over 322.79 seconds. The slowest arena was Caverns at 24.5 FPS overall and 17.0 FPS during the grenade window. [Per-arena frame times](DOWNSTREAM.md#four-player-frame-times-on-original-xbox) |
 
 Completed FPS counts render completions. Displayed FPS counts distinct frames seen at physical Xbox refreshes. The LAN guest draws one full-screen view. Local split-screen draws each active player's view. To see displayed FPS and recent frame times during play, place an empty `ge-perf-hud.on` file beside the Xbox executable and relaunch. [Performance overlay](DOWNSTREAM.md#performance-overlay) · [Windows replay and measurement instructions](DOWNSTREAM.md) · [Xbox LAN measurements](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7015760434) · [Xbox split-screen measurements](https://github.com/ZacharyLeahan/goldeneye-nxdk/issues/21#issuecomment-7016289480)
 
