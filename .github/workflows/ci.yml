@@ -285,6 +285,7 @@ jobs:
           tools_pc/bundle-linux.sh "$V"
 
       - name: Upload bundle
+        if: github.repository != 'ZacharyLeahan/goldeneye-nxdk'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: goldeneye-pc-port-linux-x86_64
@@ -403,6 +404,7 @@ jobs:
           tools_pc/bundle-win.sh "$V"
 
       - name: Upload bundle
+        if: github.repository != 'ZacharyLeahan/goldeneye-nxdk'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: goldeneye-pc-port-win64
@@ -423,7 +425,7 @@ jobs:
   # is also the only job that attests build provenance (id-token: write +
   # attestations: write; attest-build-provenance needs both).
   release:
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' && github.repository != 'ZacharyLeahan/goldeneye-nxdk'
     needs: [ changes, validate, windows-build, linux-build ]
     runs-on: ubuntu-22.04
     permissions:
