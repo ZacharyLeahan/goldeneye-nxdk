@@ -15,6 +15,12 @@ Our goals are easy couch play and private LAN cross-play, a shared modern contro
 
 ## Choose a game mode
 
+| Main dossier | Joining a LAN match |
+| --- | --- |
+| ![The Windows dossier lists Solo Campaign, LAN Multiplayer and Local Multiplayer in order](docs/img/mode-menu.jpg) | ![The Xbox lists an available GoldenEye host playing Complex with one of two slots filled](docs/img/lan-matches.jpg) |
+
+For a two-player match, choose **LAN Multiplayer** on both machines. On one, choose **Host Match**. On the other, choose **Join Match** and select the host under **Available LAN Matches**. In the Xbox capture, **Complex 1/2** means one player is in the match and one slot is open. Choose **Refresh** if the host started after you opened the list.
+
 | Windows and Xbox dossier option | How to play | Tested |
 | --- | --- | --- |
 | **Solo Campaign** | Choose a mission and difficulty from the dossier. | Dam, Jungle and Streets have reached first-person play on original Xbox. Full campaign progression on the console is still being verified. |
@@ -42,8 +48,23 @@ For command-line use, run `build.cmd windows`, `build.cmd xbox`, or `build.cmd b
 
 The controls take inspiration from modern shooters like *THE FINALS*. Sprint into a slide, mantle a ledge, or use the equipment wheel to throw a grenade or deploy a jump pad.
 
+| Equipment wheel | Jump pad placement |
+| --- | --- |
+| ![An original Xbox player highlights grenades on the right side of the radial wheel](docs/img/equipment-wheel.jpg) | ![A Windows player holds a jump pad with a green placement preview on the floor ahead](docs/img/jump-pad.jpg) |
+| Hold the wheel button, point at grenades and release to equip. | Aim at level ground. When the preview turns green, press **RT** to place the pad. |
+
+## Controls
+
+The Windows and original Xbox development builds show their own controller on the pause watch. The published **builder-1.0** uses the earlier watch artwork.
+
+| Windows · Xbox Series controller | Original Xbox · Controller S |
+| --- | --- |
+| ![Windows pause watch with the Xbox Series controller and its button labels](docs/img/controls-windows.jpg) | ![Original Xbox pause watch with Controller S and its button labels](docs/img/controls-xbox.jpg) |
+
 | Action | Controller input |
 | --- | --- |
+| Move and look | Move with the **left stick** and look with the **right stick**. |
+| Campaign watch | Press **Menu** on Windows or **Start** on original Xbox. |
 | Jump and mantle | Press **A** to jump. Move toward a ledge and press **A** near the lip to climb it. |
 | Crouch and slide | Tap **B** to crouch. Tap **B** while sprinting at speed to slide. Press **A** to jump out of the slide. |
 | Quick slap | Click the **right stick** on Windows or Xbox to strike with Bond’s palm and return to your equipped weapon. |
