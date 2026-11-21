@@ -11,6 +11,18 @@ def adapt(unit, source, *, xbox=False):
             raise ValueError(f"Review LAN adapter after change to {unit}: {before}")
         source = source.replace(before, after)
     source = '#include "port/lan/lan.h"\n' + source
+    if unit == "boss":
+        source = '#include "simulant_probe.h"\n' + source
+        replace("lvlStageLoad(g_StageNum);", "lvlStageLoad(g_StageNum);\n        simulantProbeStageReady(g_StageNum);")
+        replace("lvlUnloadStageTextData();", "simulantProbeStageTeardown();\n        lvlUnloadStageTextData();")
+    if unit == "lv":
+        source = '#include "simulant_probe.h"\n' + source
+        replace("g_GlobalTimer += g_ClockTimer;", "g_GlobalTimer += g_ClockTimer;\n    simulantProbePoll();")
+    if unit == "chraction":
+        source = '#include "mp_combat.h"\n' + source
+        anchor = "self->chrflags |= CHRFLAG_WAS_DAMAGED;"
+        site = source.index(anchor, source.index("bool handles_shot_actors("))
+        source = source[:site] + "if (damageToCause > 0) mpCombatNoteSimulantHit(self, isPlayer ? get_cur_playernum() : -1);\n            " + source[site:]
     if unit in ("boss", "lv"):
         source = '#include "port/lan/frame_trace.h"\n' + source
     if unit == "boss":
