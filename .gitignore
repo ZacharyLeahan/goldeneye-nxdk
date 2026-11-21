@@ -217,3 +217,4 @@ docs/media/*.mp4
 /build-xbox/
 /GoldenEye*.zip
 /ge-frame.bin
+/rom/

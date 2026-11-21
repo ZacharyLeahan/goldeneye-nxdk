@@ -23,19 +23,20 @@ Our goals are easy couch play and private LAN cross-play, a shared modern contro
 
 **Try the bot prototype.** Connect two controllers, highlight **Local Multiplayer**, and press **D-pad right** to start Facility with one computer opponent. Both players keep their own half of the screen. Press **A** on the same row for the regular couch setup.
 
-## Play on original Xbox
+## Build and play from Windows
 
-1. Supply your own retail US (NTSC-U) GoldenEye 007 ROM. Set up nxdk and its tools, then run `python3 port/xbox/build.py --rom data/ge007.ntsc-final.z64` from the repository root in the activated SDK shell. [Xbox build prerequisites](DOWNSTREAM.md#build-and-boot)
-2. Copy the three files from `build-xbox/disc/` into one game folder on your Xbox: `default.xbe`, `xbox.bin`, and `ge007.ntsc-final.z64`.
-3. Launch `default.xbe` from your Xbox dashboard and select a dossier.
+1. Download **[build.cmd](https://github.com/ZacharyLeahan/goldeneye-nxdk/releases/download/builder-1.0/build.cmd)** into its own folder on a 64-bit Windows PC. This small launcher is the release download.
+2. Put your retail US GoldenEye 007 ROM beside it, either as a big-endian `.z64` file or a ZIP containing the `.z64`. You can also put it in a `rom` subfolder. The launcher checks the cartridge bytes against the supported US checksum.
+3. Double-click **build.cmd**. Choose **Windows**, **Original Xbox**, or **Both**. On the first run, allow time and disk space for the matching game source, MSYS2 tools and, for Xbox, the nxdk toolchain. Review any installation prompts. Subsequent runs reuse the downloaded source and tools.
 
-**Using xemu?** Load the locally built `build-xbox/ge007.iso` as the DVD in a 64 MiB Xbox profile and reset.
+The launcher opens the finished folders after an interactive build.
 
-## Play on Windows
+| Build | What to do next |
+| --- | --- |
+| **Windows** | Open `build-pc\play` and launch `ge007.x86_64.exe`. Keep its DLLs and `data` folder with it. |
+| **Original Xbox** | Copy all three files from `build-xbox\disc` into one game folder on your Xbox. Launch `default.xbe` from the dashboard. For xemu, load the locally generated `build-xbox\ge007.iso` in a 64 MiB Xbox profile. |
 
-1. Prepare your retail US ROM and extract the game assets. The build guide covers the required tools and native model and stage data. [Windows build and asset instructions](docs/building.md)
-2. From the repository root in an MSYS2 MINGW64 shell, run `./build-pc.sh ntsc-final`.
-3. Launch `./build-pc/ge007.x86_64.exe` from the repository root. Select a dossier to open the game mode menu.
+For command-line use, run `build.cmd windows`, `build.cmd xbox`, or `build.cmd both`. In a source checkout or extracted source archive the same script builds that copy. The standalone download fetches its tagged source into a folder beside the launcher. Keep the resulting game and cartridge files private. [Release notes](https://github.com/ZacharyLeahan/goldeneye-nxdk/releases/tag/builder-1.0) · [Manual Windows build](docs/building.md) · [Manual Xbox build](DOWNSTREAM.md#build-and-boot)
 
 ## Where GE32 fits
 

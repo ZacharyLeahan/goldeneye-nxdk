@@ -6,3 +6,4 @@
 *.z64 binary
 *.exe binary
 *.bin binary
+build.cmd text eol=crlf

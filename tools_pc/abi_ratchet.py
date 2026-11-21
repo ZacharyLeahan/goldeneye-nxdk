@@ -52,7 +52,22 @@ else:
 
 def transform(entry):
     """-o <x> removed, -c -> -fsyntax-only, -Werror dropped, ratchet flags appended."""
-    toks = shlex.split(entry['command'], posix=False)
+    if os.name == 'nt':
+        # CMake quotes paths with spaces, including -I"path to include".
+        import ctypes
+        argc = ctypes.c_int()
+        split = ctypes.windll.shell32.CommandLineToArgvW
+        split.argtypes = (ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_int))
+        split.restype = ctypes.POINTER(ctypes.c_wchar_p)
+        argv = split(entry['command'], ctypes.byref(argc))
+        if not argv:
+            raise ctypes.WinError()
+        try:
+            toks = argv[:argc.value]
+        finally:
+            ctypes.windll.kernel32.LocalFree(ctypes.cast(argv, ctypes.c_void_p))
+    else:
+        toks = shlex.split(entry['command'])
     new, skip = [], False
     for t in toks:
         if skip:
@@ -149,8 +164,18 @@ def collect(build_dir):
             errors.append((tu, err))
         seen.update(rows)
 
+    # The Windows fork compiles adapted copies of upstream translation units.
+    # Keep their warnings charged to the original files in the shared baseline.
+    generated = os.path.relpath(os.path.abspath(build_dir), ROOT).replace(os.sep, '/')
     counts = {}
     for (f, _ln, _col, flag, _msg) in seen:
+        directory, name = os.path.split(f)
+        if f == generated + '/lan-scheduler.c':
+            f = 'src/sched.c'
+        elif directory == generated + '/lan' and name.endswith('.c'):
+            source = 'src/boss.c' if name == 'boss.c' else 'src/game/' + name
+            if os.path.isfile(os.path.join(ROOT, source)):
+                f = source
         counts.setdefault(f, {})
         counts[f][flag] = counts[f].get(flag, 0) + 1
 

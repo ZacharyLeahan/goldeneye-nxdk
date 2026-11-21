@@ -1,0 +1,12 @@
+XboxDev/nxdk 14d5ee97e73347c973f1f57b68b79ec08c9e77f2 .
+XboxDev/nxdk-libcxx 3111bbf75a5f89d382c7f3366a166b662d43048a lib/libcxx
+libjpeg-turbo/libjpeg-turbo 166e34213e4f4e2363ce058a7bcc69fd03e38b76 lib/libjpeg/libjpeg-turbo
+glennrp/libpng a40189cf881e9f0db80511c382292a5604c3c3d1 lib/libpng/libpng
+lwip-tcpip/lwip 77dcd25a72509eb83f72b033d219b1d40cd8eb95 lib/net/lwip
+XboxDev/nxdk-pdclib 9d257524e20e3e1ac90163b37f07702053e36321 lib/pdclib
+XboxDev/nxdk-sdl 2554902f7bbf469449216ee25f88016421271cd8 lib/sdl/SDL2
+libsdl-org/SDL_image ab2a9c602623193d61827ccd395302d92d90fc38 lib/sdl/SDL2_image
+libsdl-org/SDL_ttf 200901a8f55bcf7aa031157f53a575c942d2b7aa lib/sdl/SDL_ttf
+XboxDev/libusbohci 6a0c5fefbcd9db53f4a27ee10df99f93d5bce745 lib/usb/libusbohci
+madler/zlib 51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf lib/zlib/zlib
+XboxDev/extract-xiso b72e5b60d598ec6df80534cda19cdcd4361aa18c tools/extract-xiso
